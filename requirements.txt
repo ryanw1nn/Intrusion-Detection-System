@@ -1,0 +1,23 @@
+# Core packet capture and analysis
+scapy>=2.5.0
+
+# Machine learning / anomaly detection
+scikit-learn>=1.5.0
+numpy>=1.26.0
+
+# Logging and utilities (standard library, included with Python)
+# - logging
+# - json
+# - datetime
+# - threading
+# - queue
+# - collections
+# No need to install separately
+
+# Optional (for plotting, debugging, etc.)
+matplotlib>=3.8.0
+
+# To Run:
+# python3 -m venv venv
+# source venv/bin/activate  # (on macOS/Linux)
+# pip install -r requirements.txt

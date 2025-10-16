@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intrusion-detection-system"
+version = "0.1.0"
+description = "A Python-based real-time Intrusion Detection System using Scapy and machine learning."
+authors = [{ name = "Ryan Winn" }]
+license = { text = "MIT" }
+dependencies = [
+    "scapy>=2.5.0",
+    "scikit-learn>=1.5.0",
+    "numpy>=1.26.0",
+    "matplotlib>=3.8.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["ids"]
