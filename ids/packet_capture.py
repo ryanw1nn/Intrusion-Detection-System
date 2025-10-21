@@ -1,10 +1,12 @@
 from scapy.all import sniff, IP, TCP
 import threading
 import queue
+import logging
+logger = logging.getLogger(__name__)
 
 class PacketCapture:
     def __init__(self):
-        self.packet_queue = queue.Queue()
+        self.packet_queue = queue.Queue(maxsize=1000) # prevent memory exhaustion
         self.stop_capture = threading.Event()
 
     def packet_callback(self, packet):
@@ -22,5 +24,9 @@ class PacketCapture:
         self.capture_thread.start()
 
     def stop(self):
+        print("Flushing packet queue...")
+        while not self.packet_queue_empty():
+            # process remaining packets
+            pass
         self.stop_capture.set()
         self.capture_thread.join()
