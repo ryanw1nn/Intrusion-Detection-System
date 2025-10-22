@@ -17,21 +17,39 @@ class DetectionEngine:
         return {
             'syn_flood': {
                 'condition': lambda features: (
-                    features['tcp_flags'] == 2 and # SYN flag
+                    features['tcp_flags'] & 0x02 and # SYN flag
                     features['packet_rate'] > 100
                 )
             },
             'port_scan': {
-                'condition': lambda features, flow_key: (
+                'condition': lambda features: (
                     features['packet_size'] < 100 and
-                    features['packet_rate'] > 50 and
-                    self._is_scanning_pattern(flow_key) # track unique dest ports
+                    features['packet_rate'] > 50
                 )
             }
         }
 
     def train_anomaly_detector(self, normal_traffic_data):
         self.anomaly_detector.fit(normal_traffic_data)
+        self.is_trained = True
+
+    def _signature_only_detection(self, features):
+        """Run only signature-based detection (when ML model is not trained)"""
+        threats=[]
+
+        for rule_name, rule in self.signature_rules.items():
+            try:
+                if rule['condition'](features):
+                    threats.append({
+                        'type': 'signature',
+                        'rule': rule_name,
+                        'confidence': 1.0
+                    })
+            except Exception as e:
+                pass
+                
+        return threats
+
 
     def detect_threats(self, features):
         

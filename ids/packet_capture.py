@@ -25,7 +25,7 @@ class PacketCapture:
 
     def stop(self):
         print("Flushing packet queue...")
-        while not self.packet_queue_empty():
+        while not self.packet_queue.empty():
             # process remaining packets
             pass
         self.stop_capture.set()
