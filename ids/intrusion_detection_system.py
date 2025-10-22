@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from scapy.all import IP, TCP
 import queue
 from ids.packet_capture import PacketCapture
@@ -7,12 +9,12 @@ from ids.alert_system import AlertSystem
 
 
 class IntrusionDetectionSystem:
-    def __init__(self, interface="eth0"):
-        self.packet_pacture = PacketCapture()
+    def __init__(self, interface="lo0"):
+        self.packet_capture = PacketCapture()
         self.traffic_analyzer = TrafficAnalyzer()
         self.detection_engine = DetectionEngine()
         self.alert_system = AlertSystem()
-
+        
         self.interface = interface
 
     def start(self):
@@ -36,6 +38,10 @@ class IntrusionDetectionSystem:
                         }
                         self.alert_system.generate_alert(threat, packet_info)
 
+            except Exception as e:
+                logging.error(f"Packet processing error: {e}")
+                continue
+            
             except queue.Empty:
                 continue
             except KeyboardInterrupt:
