@@ -157,7 +157,8 @@ class TrafficAnalyzer:
             'packet_rate': stats['packet_count'] / time_diff,
             'byte_rate': stats['byte_count'] / time_diff,
             'tcp_flags': int(packet[TCP].flags),
-            'window_size': packet[TCP].window 
+            'window_size': packet[TCP].window,
+            'packet_count': stats['packet_count']
         }
     
     def get_flow_count(self) -> int:

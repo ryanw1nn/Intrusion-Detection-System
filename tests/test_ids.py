@@ -244,7 +244,7 @@ class LiveNetworkTest:
         
         print(f"\n{'='*60}")
         print(f"SUMMARY")
-        print(f"'='*60\n")
+        print(f"{'='*60}\n")
 
 def generate_test_pcap(filename="test_traffic.pcap"):
     """
@@ -258,13 +258,13 @@ def generate_test_pcap(filename="test_traffic.pcap"):
     # Normal traffic
     for i in range(20):
         pkt = IP(src="192.168.1.1", dst="192.168.1.2") / TCP(sport=1234+i, dport=80, flags="A")
-        pkt.time = current_time + i * 0.1
+        pkt.time = current_time + i * 1.0
         packets.append(pkt)
 
     # SYN flood
     for i in range(50):
         pkt = IP(src=f"10.0.0.{i%255}", dst="192.168.1.2") / TCP(sport=5000+i, dport=80, flags="S")
-        pkt.time = current_time + 10 * i * 0.01
+        pkt.time = current_time + 10 + i * 0.01
         packets.append(pkt)
 
     # Port scan
@@ -302,6 +302,12 @@ def test_with_pcap(pcap_file):
         features = analyzer.analyze_packet(packet)
 
         if features:
+
+            # DEBUG OUTPUT
+            if i in [1, 21, 71]:
+                print(f"\nDEBUG Packet: {i}:")
+                print(f"    Features: {features}")
+
             threats = engine.detect_threats(features)
             if threats:
                 threat_count += 1
