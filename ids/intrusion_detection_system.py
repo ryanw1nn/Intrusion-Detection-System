@@ -37,17 +37,17 @@ class IntrusionDetectionSystem:
                             'destination_port': packet[TCP].dport
                         }
                         self.alert_system.generate_alert(threat, packet_info)
-
-            except Exception as e:
-                logging.error(f"Packet processing error: {e}")
-                continue
-            
             except queue.Empty:
                 continue
+
             except KeyboardInterrupt:
                 print("Stopping IDS...")
                 self.packet_capture.stop()
                 break
+            
+            except Exception as e:
+                logging.error(f"Packet processing error: {e}")
+                continue
 
 if __name__ == "__main__":
     ids = IntrusionDetectionSystem()

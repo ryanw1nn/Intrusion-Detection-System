@@ -82,16 +82,7 @@ class DetectionEngine:
         high_rate = features['packet_rate'] > 100
         small_packet = features['packet_size'] < 100
 
-        # For single-packet flows with extreme rates, still detect
-        extreme_rate = features['packet_rate'] > 10000
-        single_packet = features.get('packet_count, 1') == 1
-
-        # Trigger on either multi-packet flows OR extreme single-packet rates
-        if single_packet and extreme_rate:
-            return is_pure_syn and small_packet
-        else:
-            sufficient_packets = features.get('packet_count', 1) > 5
-            return is_pure_syn and high_rate and small_packet and sufficient_packets
+        return is_pure_syn and high_rate and small_packet
 
     def _detect_port_scan(self, features: Dict) -> bool:
         """
@@ -108,20 +99,8 @@ class DetectionEngine:
         small_packet = features['packet_size'] < 100
         short_flow = features['flow_duration'] < 2.0 # quick probes
 
-        # for single-packet flows with extreme rates
-        extreme_rate = features['packet_rate'] > 10000\
-        single_packet = features.get('packet_count', 1) == 1
+        return is_syn and high_rate and small_packet and short_flow
 
-        if single_packet and extreme_rate:
-            return is_syn and small_packet and short_flow
-        else:
-            sufficient_packets = features.get('packet_count', 1) > 5
-            return is_syn and high_rate and small_packet and sufficient_packets
-
-
-        # Must all all characteristics to reduce false positives
-        return is_syn and high_rate and small_packet and short_flow and sufficient_packets
-        
     def _cleanup_connection_tracker(self):
         """ Remove old entries from connection tracker """
         current_time = time.time()

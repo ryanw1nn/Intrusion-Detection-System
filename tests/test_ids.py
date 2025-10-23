@@ -197,8 +197,10 @@ class LiveNetworkTest:
 
         # Generate some baseline training data
         print("Training anomaly detector with synthetic baseline...")
-        normal_data = np.random.normal(loc=[100, 10, 1000], scale=[20, 3,200], size=(50, 3))
-        engine.train_anomaly_detector(normal_data)
+        #normal_data = np.random.normal(loc=[100, 10, 1000], scale=[20, 3,200], size=(50, 3))
+        #engine.train_anomaly_detector(normal_data)
+        print("Anomaly detection disabled (signature-based detection only)")
+
 
         threat_count = 0
         packet_analyzed = 0
@@ -295,6 +297,8 @@ def test_with_pcap(pcap_file):
     # Train detector
     normal_data = np.array([[100,10,1000], [120,15,1500], [80,5,800]])
     engine.train_anomaly_detector(normal_data)
+    print("Anomaly detection disabled for live test (signature-based only)")
+
 
     threat_count = 0
 
@@ -305,8 +309,14 @@ def test_with_pcap(pcap_file):
 
             # DEBUG OUTPUT
             if i in [1, 21, 71]:
-                print(f"\nDEBUG Packet: {i}:")
-                print(f"    Features: {features}")
+                print(f"\n=== DEBUG Packet {i} ===")
+                print(f"  IP: {packet[IP].src} -> {packet[IP].dst}")
+                print(f"  Ports: {packet[TCP].sport} -> {packet[TCP].dport}")
+                print(f"  TCP Flags: {packet[TCP].flags} (int: {features['tcp_flags']})")
+                print(f"  Packet size: {features['packet_size']}")
+                print(f"  Packet count in flow: {features['packet_count']}")
+                print(f"  Flow duration: {features['flow_duration']}")
+                print(f"  Packet rate: {features['packet_rate']}")
 
             threats = engine.detect_threats(features)
             if threats:
