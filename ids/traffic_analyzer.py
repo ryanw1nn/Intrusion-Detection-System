@@ -1,15 +1,28 @@
+"""
+Traffic analysis module for extracting features from network flows.
+Tracks individual TCP flows and calculates statstics for threat detection.
+"""
+
 from scapy.all import IP, TCP
 from collections import OrderedDict
 from typing import Dict, Optional, Tuple
 import time
 import logging
+
 logger = logging.getLogger(__name__)
 
-MIN_TIME_DIFF = 1e-6
+# constants
+MIN_TIME_DIFF = 1e-6 # minimum time difference to prevent division by zero
 DEFAULT_MAX_FLOWS = 10000
 DEFAULT_FLOW_TIMEOUT = 300 # 5 minutes
 
 class TrafficAnalyzer:
+    """
+    Analyzes network traffic by tracking TCP flows and extracting features.
+
+    Maintains statistics for each flow including packet counts, byte counts,
+    timing information, and calculates derived features like packet rate.
+    """
 
     def __init__(self, max_flows: int = DEFAULT_MAX_FLOWS, flow_timeout: int = DEFAULT_FLOW_TIMEOUT):
         """
@@ -26,6 +39,7 @@ class TrafficAnalyzer:
         self.last_cleanup_time = time.time()
         self.cleanup_interval = 60 # runs cleanup every 60 seconds
         
+        logger.info(f"TrafficAnalyzer initialized: max_flows{max_flows}, timeout={flow_timeout}s")
     
     def analyze_packet(self, packet) -> Optional[Dict[str, float]]:
         """
@@ -47,13 +61,19 @@ class TrafficAnalyzer:
             port_src = packet[TCP].sport
             port_dst = packet[TCP].dport
 
+            # Create unique flow identifier (5-tuple)
             flow_key = (ip_src, ip_dst, port_src, port_dst, 'TCP')
 
             # update flow statistics
             stats = self._get_or_create_flow_stats(flow_key)
             stats['packet_count'] += 1
             stats['byte_count'] += len(packet)
-            current_time = getattr(packet, 'time', time.time())
+
+            # get packet timestamp (use current time if not available)
+            try:
+                current_time = packet.time
+            except AttributeError:
+                current_time = time.time()
 
             if stats['start_time'] is None:
                 stats['start_time'] = current_time
@@ -72,18 +92,19 @@ class TrafficAnalyzer:
     def _get_or_create_flow_stats(self, flow_key: Tuple) -> Dict:
         """
         Get existing flow stats or create new entry.
+        Uses LRU (Least Recently Used) eviction when max capacity is reached.
 
         Args:
-            flow_key: Tuple identifying the flow
+            flow_key: Tuple identifying the flow (src_ip, dst_ip, src_port, dst_port, protocol)
 
         Returns:
             Dictionary containing flow statistics
         """
         if flow_key not in self.flow_stats:
-            # if at max capacity, remove oldest flow
+            # if at max capacity, remove oldest least recently used) flow
             if len(self.flow_stats) >= self.max_flows:
-                self.flow_stats.popitem(last=False)
-                logger.debug(f"Removed oldest flow. Current flows: {len(self.flow_stats)}")
+                removed_key = self.flow_stats.popitem(last=False)[0]
+                logger.debug(f"Removed oldest flow: {removed_key}")
 
             self.flow_stats[flow_key] = {
                 'packet_count': 0,
@@ -92,7 +113,7 @@ class TrafficAnalyzer:
                 'last_time': None
             }
         else:
-            # move to end (most recently used)
+            # move to end (mark as recently used)
             self.flow_stats.move_to_end(flow_key)
         
         return self.flow_stats[flow_key]
@@ -101,6 +122,7 @@ class TrafficAnalyzer:
     def _periodic_cleanup(self) -> None:
         """
         Periodically clea up old inactive flows.
+        Only runs at specified intervals to minimize performance impact.
         """
         current_time = time.time()
         
@@ -108,15 +130,19 @@ class TrafficAnalyzer:
         if current_time - self.last_cleanup_time < self.cleanup_interval:
             return
         
-        self.cleanup_old_flows()
+        removed = self.cleanup_old_flows()
         self.last_cleanup_time = current_time
+
+        if removed > 0:
+            logger.debug(f"Periodic cleanup removed {removed} flows")
 
     
     def cleanup_old_flows(self) -> int:
         """"
         Remove flows that have been inactive for longer than flow_timeout
 
-        Returns: Number of flows removed
+        Returns: 
+            Number of flows removed
         """
         current_time = time.time()
         keys_to_remove = []
@@ -143,7 +169,15 @@ class TrafficAnalyzer:
             stats: Flow statistics dictionary
 
         Returns:
-            Dictionary of extracted features
+            Dictionary of extracted features including:
+            - packet_size: Size of packets in bytes
+            - flow_duration: Time since flow started
+            - packet_rate: Packets per second in this flow
+            - byte_rate: Bytes per second in this flow
+            - tcp_flags: TCP flags as integer
+            - window_size: TCP window size
+            - packet_count: Total packets in flow
+            
         """
         time_diff = stats['last_time'] - stats['start_time']
 
@@ -170,9 +204,24 @@ class TrafficAnalyzer:
         """
         return len(self.flow_stats)
     
+    def get_flow_info(self, limit: int = 10) -> list:
+        """
+        Get information about the most recent flows.
+
+        Args:
+            limit: Maximum number of flows to return
+
+        Returns:
+            List of tuples (flow_key, stats)
+        """
+        flows = list(self.flow_stats.items())[-limit:]
+        return flows
+
     def reset(self) -> None:
         """
-        Clear all flow statistics. For testing or restarting analysis
+        Clear all flow statistics. 
+        For testing or restarting analysis
         """
+        num_flows = len(self.flow_stats)
         self.flow_stats.clear()
-        logger.info("All flow statistics reset")
+        logger.info(f"Reset: cleared {num_flows} flows")
