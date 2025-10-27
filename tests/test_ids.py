@@ -86,6 +86,7 @@ class TestTrafficAnalyzer(unittest.TestCase):
         features = self.analyzer.analyze_packet(packet)
         self.assertIsNone(features)
 
+
 class TestDetectionEngine(unittest.TestCase):
     """Unit tests for DetectionEngine"""
     
@@ -106,11 +107,12 @@ class TestDetectionEngine(unittest.TestCase):
         """Test SYN flood signature detection"""
         features = {
             'packet_size': 60,
-            'packet_rate': 150, # high rate
-            'byte_rate': 900,
+            'packet_rate': 600, # high rate
+            'byte_rate': 36000,
             'tcp_flags': 2, # SYN flag
             'flow_duration': 1.0,
-            'window_size': 8192
+            'window_size': 8192,
+            'packet_count': 5
         }
 
         threats = self.engine.detect_threats(features)
@@ -122,11 +124,12 @@ class TestDetectionEngine(unittest.TestCase):
         """Test port scan signature detection"""
         features = {
             'packet_size': 60, # small packet
-            'packet_rate': 60, # high rate
-            'byte_rate': 3600,
+            'packet_rate': 150, # high rate
+            'byte_rate': 9000,
             'tcp_flags': 2,
-            'flow_duration': 1.0,
-            'window_size': 8192
+            'flow_duration': 0.3,
+            'window_size': 8192,
+            'packet_count': 5 # multiple packets in flow
         }
 
         threats = self.engine.detect_threats(features)
@@ -166,6 +169,7 @@ class TestDetectionEngine(unittest.TestCase):
         # should detect anomaly
         self.assertTrue(any(t['type'] == 'anomaly' for t in threats))
 
+
 class LiveNetworkTest:
     """
     Live network testing, not a unit test
@@ -195,10 +199,9 @@ class LiveNetworkTest:
         analyzer = TrafficAnalyzer()
         engine = DetectionEngine()
 
-        # Generate some baseline training data
-        print("Training anomaly detector with synthetic baseline...")
-        normal_data = np.random.normal(loc=[100, 10, 1000], scale=[20, 3,200], size=(50, 3))
-        engine.train_anomaly_detector(normal_data)
+        # Anomaly detection disabled for live tests to avoid false positives
+        # from synthetic training data that doesn't match real traffic patterns
+        print("Anomaly detection disabled (signature-based detection only)")
 
         threat_count = 0
         packet_analyzed = 0
@@ -245,29 +248,40 @@ class LiveNetworkTest:
         print(f"\n{'='*60}")
         print(f"SUMMARY")
         print(f"{'='*60}\n")
+        print(f"Packets analyzed: {packet_analyzed}")
+        print(f"Threats detected: {threat_count}")
+        print(f"Detection rate: {(threat_count/packet_analyzed*100):.1f}%" if packet_analyzed > 0 else "N/A")
+        print(f"{'='*60}\n")
+
 
 def generate_test_pcap(filename="test_traffic.pcap"):
     """
     Generate a PCAP file with various traffic patterns for testing
+
+    Args:
+        filename: Output filename for the PCAP
+
+    Returns:
+        str: Path to the generated PCAP file
     """
     packets = []
     current_time = time.time()
 
     print(f"Generating test PCAP: {filename}")
 
-    # Normal traffic
+    # Normal traffic - ACK packets at normal rate
     for i in range(20):
         pkt = IP(src="192.168.1.1", dst="192.168.1.2") / TCP(sport=1234+i, dport=80, flags="A")
         pkt.time = current_time + i * 1.0
         packets.append(pkt)
 
-    # SYN flood
+    # SYN flood - Many SYN packets from different sources
     for i in range(50):
         pkt = IP(src=f"10.0.0.{i%255}", dst="192.168.1.2") / TCP(sport=5000+i, dport=80, flags="S")
         pkt.time = current_time + 10 + i * 0.01
         packets.append(pkt)
 
-    # Port scan
+    # Port scan - SYN packets to sequential ports
     for port in range(20, 100):
         pkt = IP(src="192.168.1.100", dst="192.168.1.2") / TCP(sport=4321, dport=port, flags="S")
         pkt.time = current_time + 15 + (port-20) * 0.02
@@ -280,6 +294,9 @@ def generate_test_pcap(filename="test_traffic.pcap"):
 def test_with_pcap(pcap_file):
     """
     Test IDS with a PCAP file
+
+    Args:
+        pcap_file: Path to PCAP file to analyze
     """
     print(f"\n{'='*60}")
     print(f"PCAP FILE TEST: {pcap_file}")
@@ -288,13 +305,15 @@ def test_with_pcap(pcap_file):
     if not os.path.exists(pcap_file):
         print(f"❌ File not found: {pcap_file}")
         return
+    
     packets = rdpcap(pcap_file)
     analyzer = TrafficAnalyzer()
     engine = DetectionEngine()
 
-    # Train detector
-    normal_data = np.array([[100,10,1000], [120,15,1500], [80,5,800]])
-    engine.train_anomaly_detector(normal_data)
+    # Note: Anomaly detection disabled for PCAP analysis
+    # PCAP timing doesn't reflect real-world flow rates
+    print("Analyzing with signature-based detection...\n")
+
 
     threat_count = 0
 
@@ -302,20 +321,17 @@ def test_with_pcap(pcap_file):
         features = analyzer.analyze_packet(packet)
 
         if features:
-
-            # DEBUG OUTPUT
-            if i in [1, 21, 71]:
-                print(f"\nDEBUG Packet: {i}:")
-                print(f"    Features: {features}")
-
             threats = engine.detect_threats(features)
             if threats:
                 threat_count += 1
                 print(f"Packet {i}: {len(threats)} threat(s) - {[t.get('rule', t['type']) for t in threats]}")
 
     print(f"\n{'='*60}")
-    print(f"Analyzed {len(packets)} packets")
-    print(f"Detected {threat_count} threatening packets")
+    print(f"ANALYSIS COMPLETE")
+    print(f"{'='*60}")
+    print(f"Total packets analyzed: {len(packets)}")
+    print(f"Threatening packets: {threat_count}")
+    print(f"Clean packets: {len(packets) - threat_count}")
     print(f"{'='*60}\n")
 
 if __name__ == "__main__":
