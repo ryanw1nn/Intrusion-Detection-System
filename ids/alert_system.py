@@ -17,6 +17,14 @@ class AlertSystem:
         self.logger.addHandler(handler)
 
     def generate_alert(self, threat, packet_info):
+        """
+        Generate and log an alert for a detected threat.
+
+        Args:
+            threat: Dictionary containing threat details (type, confidence, severity, etc.)
+            packet_info: Dictionary with packet information (IPs, ports, etc.)
+        """
+
         alert = {
             'timestamp': datetime.now().isoformat(),
             'threat_type': threat['type'],
@@ -32,5 +40,14 @@ class AlertSystem:
             self.logger.critical(
                 f"High confidence threat detected: {json.dumps(alert)}"
             )
-            # implement additional notification methods here
-            # slack, email, SIEM
+            self._send_high_priority_notifications(alert)
+
+    def _send_high_priority_notifications(self, alert):
+        """
+        Placeholder for future notifications implementations
+
+        Args:
+            alert: Alert dictionary to send
+        """ 
+        # Placeholder for future email/slack/SIEM notifications
+        pass

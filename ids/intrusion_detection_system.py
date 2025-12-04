@@ -187,7 +187,7 @@ class IntrusionDetectionSystem:
         return {
             **self.stats,
             'active_flows': self.traffic_analyzer.get_flow_count(),
-            'queue_size': self.packet_capture.get_queue.size(),
+            'queue_size': self.packet_capture.get_queue_size(),
             'detection_engine': self.detection_engine.get_statistics()
         }
     

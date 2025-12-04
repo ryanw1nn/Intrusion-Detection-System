@@ -19,6 +19,10 @@ ACK_FLAG = 0x10
 FIN_FLAG = 0x01
 RST_FLAG = 0x04
 
+SYN_FLOOD_RATE_THRESHOLD = 1500
+PORT_SCAN_RATE_THRESHOLD = 500
+MIN_PACKET_COUNT = 15
+
 class DetectionEngine:
     """
     Multi-method threat detection engine.
@@ -48,6 +52,8 @@ class DetectionEngine:
         self.tracker_timeout = 60 # clean up tracking data after 60 seconds
 
         logger.info(f"DetectionEngine initialized with {len(self.signature_rules)} signature rules")
+        logger.info(f"False positive reduction: SYN flood threshold={SYN_FLOOD_RATE_THRESHOLD}, "
+                    f"Port scan threshold={PORT_SCAN_RATE_THRESHOLD}, Min packets={MIN_PACKET_COUNT}")
 
     def load_signature_rules(self) -> Dict:
         """
@@ -99,11 +105,11 @@ class DetectionEngine:
         is_pure_syn = is_syn and not is_ack
 
         # High packet rate and small packets suggest flood
-        high_rate = features['packet_rate'] > 500
+        high_rate = features['packet_rate'] > SYN_FLOOD_RATE_THRESHOLD
         small_packet = features['packet_size'] < 100
 
         # Require multiple packets to avoid single-packet false positives
-        multiple_packets = features.get('packet_count', 1) >= 3
+        multiple_packets = features.get('packet_count', 1) >= MIN_PACKET_COUNT
 
         return is_pure_syn and high_rate and small_packet and multiple_packets
 
@@ -125,12 +131,12 @@ class DetectionEngine:
             True if port scan detected, False otherwise
         """
         is_syn = features['tcp_flags'] & SYN_FLAG
-        high_rate = features['packet_rate'] > 100 # Lower threshold than SYN flood
+        high_rate = features['packet_rate'] > PORT_SCAN_RATE_THRESHOLD
         small_packet = features['packet_size'] < 100
         short_flow = features['flow_duration'] < 0.5 # quick probes
 
         # require multiple packets to filter out legitimate single SYN packets
-        multiple_packets = features.get('packet_count', 1) >= 3
+        multiple_packets = features.get('packet_count', 1) >= MIN_PACKET_COUNT
 
         return is_syn and high_rate and small_packet and short_flow and multiple_packets
 
@@ -196,7 +202,7 @@ class DetectionEngine:
                         'description': rule.get('description', '')
                     })
             except Exception as e:
-                logger.debug(f"Rule '{rule.name}' evaluation failed: {e}")
+                logger.debug(f"Rule '{rule_name}' evaluation failed: {e}")
 
 
         # anomaly-based detection (only if trained)
@@ -289,4 +295,4 @@ class DetectionEngine:
         """ Reset the detection engine state (clears connection tracking) """
         num_connections = len(self.connection_tracker)
         self.connection_tracker.clear()
-        logger.info("Detection engine reset: cleared {num_connections} connection entries")
+        logger.info(f"Detection engine reset: cleared {num_connections} connection entries")
