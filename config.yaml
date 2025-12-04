@@ -1,1 +1,193 @@
-#IDS Configuration File
+# IDS Configuration File
+# 
+# Edit this file to customize the IDS behavior without changing code.
+# All values have sensible defaults. Modify as needed.
+
+# ========================================
+# NETWORK SETTINGS
+# ========================================
+network:
+  # Network interface to monitor (e.g., 'eth0', 'en0', 'wlan0', 'lo0')
+  interface: "lo0"
+
+  # Maximum packets to buffer before processing
+  queue_size: 1000
+
+  # BPF filter for packet capture (empty = capture all TCP)
+  # Example: "port 80 or port 443" to only monitor HTTP/HTTPS
+  bpf_filter: ""
+
+# ============================================================================
+# DETECTION THRESHOLDS
+# ============================================================================
+detection:
+  # SYN Flood Detection
+  syn_flood:
+    enabled: true
+    # Packets per second threshold (higher = less sensitive)
+    rate_threshold: 1500
+    # Minimum packet count before triggering alert
+    min_packet_count: 15
+    # Maximum packet size for SYN flood detection
+    max_packet_size: 100
+    severity: "high"
+  
+  # Port Scan Detection
+  port_scan:
+    enabled: true
+    # Packets per second threshold (higher = less sensitive)
+    rate_threshold: 500
+    # Minimum packet count before triggering alert
+    min_packet_count: 15
+    # Maximum packet size for port scan detection
+    max_packet_size: 100
+    # Maximum flow duration (seconds) for port scan
+    max_flow_duration: 0.5
+    severity: "medium"
+  
+  # Large Packet Detection
+  large_packet:
+    enabled: true
+    # Packet size threshold (bytes)
+    size_threshold: 1500
+    severity: "low"
+  
+  # Anomaly Detection (Machine Learning)
+  anomaly:
+    enabled: false  # Set to true after training on your network's baseline
+    # Anomaly score threshold (lower = more sensitive)
+    threshold: -0.5
+    # Expected proportion of outliers in training data
+    contamination: 0.1
+
+# ============================================================================
+# FLOW TRACKING
+# ============================================================================
+flow_tracking:
+  # Maximum number of concurrent flows to track
+  max_flows: 10000
+  
+  # Flow timeout in seconds (inactive flows are cleaned up)
+  flow_timeout: 300
+  
+  # Cleanup interval in seconds
+  cleanup_interval: 60
+
+# ============================================================================
+# ALERTING
+# ============================================================================
+alerting:
+  # Alert log file location
+  log_file: "ids_alerts.log"
+  
+  # Minimum severity to log ('low', 'medium', 'high')
+  min_severity: "low"
+  
+  # Alert deduplication window (seconds)
+  # Same flow won't trigger duplicate alerts within this time
+  deduplication_window: 60
+  
+  # Email notifications (Phase 3, Item #10)
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    from_address: "ids@example.com"
+    to_addresses:
+      - "admin@example.com"
+    # For Gmail, use an app-specific password
+    username: ""
+    password: ""
+    # Only send emails for these severities
+    severity_threshold: "high"
+  
+  # Slack notifications (Phase 5, Item #23)
+  slack:
+    enabled: false
+    webhook_url: ""
+    # Only send to Slack for these severities
+    severity_threshold: "medium"
+
+# ============================================================================
+# WHITELISTS / BLACKLISTS
+# ============================================================================
+filtering:
+  # Whitelisted IPs/networks (never trigger alerts)
+  whitelist:
+    - "127.0.0.1"           # localhost
+    - "::1"                 # localhost IPv6
+    # - "192.168.1.0/24"    # Your trusted network
+    # - "10.0.0.0/8"        # Private network
+  
+  # Blacklisted IPs (always trigger alerts, even on small traffic)
+  blacklist:
+    # - "known.bad.ip"
+    # - "malicious.host"
+  
+  # Whitelisted ports (don't monitor these ports)
+  whitelist_ports:
+    # - 22  # SSH
+    # - 80  # HTTP
+    # - 443 # HTTPS
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+  
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Console output
+  console_enabled: true
+  
+  # File logging
+  file_enabled: true
+  file_path: "ids.log"
+
+# ============================================================================
+# PERFORMANCE
+# ============================================================================
+performance:
+  # Number of worker threads for packet processing (Phase 6, Item #26)
+  # Set to 0 for single-threaded (current implementation)
+  worker_threads: 0
+  
+  # Batch size for packet processing
+  batch_size: 10
+  
+  # Statistics update interval (seconds)
+  stats_interval: 10
+
+# ============================================================================
+# ADVANCED FEATURES
+# ============================================================================
+advanced:
+  # Automatically capture PCAPs of suspicious traffic (Phase 3, Item #11)
+  pcap_capture:
+    enabled: false
+    directory: "captured_traffic"
+    # Maximum size per PCAP file (MB)
+    max_size_mb: 100
+  
+  # Automated response (Phase 5, Item #21)
+  auto_response:
+    enabled: false
+    # Automatically block IPs after this many high-severity alerts
+    block_threshold: 3
+    # Block duration (seconds), 0 = permanent
+    block_duration: 3600
+  
+  # Database logging (Phase 3, Item #9)
+  database:
+    enabled: false
+    type: "sqlite"  # sqlite, postgresql, mysql
+    path: "ids_alerts.db"
+    # For PostgreSQL/MySQL
+    host: "localhost"
+    port: 5432
+    username: ""
+    password: ""
+    database: "ids"
