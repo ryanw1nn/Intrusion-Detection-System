@@ -65,7 +65,7 @@ class IntrusionDetectionSystem:
 
         # Alert System
         log_file = self.config.get('alerting.log_file', 'ids_alerts.log') if self.config else 'ids_alerts.log'
-        self.alert_system = AlertSystem(log_file=log_file)
+        self.alert_system = AlertSystem(log_file=log_file, config=self.config)
 
         # Statistics 
         self.stats = {

@@ -7,10 +7,18 @@ import unittest
 from scapy.all import IP, TCP, wrpcap, rdpcap
 from ids.traffic_analyzer import TrafficAnalyzer
 from ids.detection_engine import DetectionEngine
+from ids.alert_system import AlertSystem
+from ids.config_loader import ConfigLoader
 import numpy as np
 import time
 import os
+import tempfile
+import yaml
 
+
+# ===================================
+# TRAFFIC ANALYZER TESTS
+# ===================================
 class TestTrafficAnalyzer(unittest.TestCase):
     """Unit tests for TrafficAnalyzer"""
 
@@ -86,7 +94,9 @@ class TestTrafficAnalyzer(unittest.TestCase):
         features = self.analyzer.analyze_packet(packet)
         self.assertIsNone(features)
 
-
+# ===================================
+# DETECTION ENGINE TESTS
+# ===================================
 class TestDetectionEngine(unittest.TestCase):
     """Unit tests for DetectionEngine"""
     
@@ -213,6 +223,10 @@ class TestDetectionEngine(unittest.TestCase):
         syn_flood_threats = [t for t in threats if t.get('rule') == 'syn_flood']
         self.assertEqual(len(syn_flood_threats), 0)
 
+
+# ===================================
+# CONFIG INTERGRATION TESTS
+# ===================================
 class TestConfigIntegration(unittest.TestCase):
     """
     Test configuration system integration
@@ -241,7 +255,180 @@ class TestConfigIntegration(unittest.TestCase):
         self.assertEqual(engine.port_scan_rate, 500)
         self.assertEqual(engine.min_packet_count, 15)
 
+# ===================================
+# ALERT DEDUPLICATION TESTS
+# ===================================
 
+class TestAlertDeduplication(unittest.TestCase):
+    """Test alert deduplication functionality"""
+
+    def setUp(self):
+        """Create a temporary log file for each test"""
+        self.temp_log = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log')
+        self.temp_log.close()
+        self.log_file = self.temp_log.name
+    
+    def tearDown(self):
+        """Clean up temporary log file"""
+        if os.path.exists(self.log_file):
+            os.unlink(self.log_file)    
+
+    def test_first_alert_not_suppressed(self):
+        """Test that the first alert for a flow is not suppressed"""
+        alert_system = AlertSystem(log_file=self.log_file)
+        
+        threat = {'type': 'signature', 'rule': 'syn_flood', 'confidence': 0.9, 'severity': 'high'}
+        packet_info = {
+            'source_ip': '192.168.1.100',
+            'destination_ip': '10.0.0.1',
+            'source_port': 12345,
+            'destination_port': 80
+        }
+        
+        result = alert_system.generate_alert(threat, packet_info)
+        
+        self.assertTrue(result)  # First alert should be generated
+        stats = alert_system.get_statistics()
+        self.assertEqual(stats['total_alerts_generated'], 1)
+        self.assertEqual(stats['total_alerts_suppressed'], 0)
+        def test_duplicate_alert_suppressed(self):
+            """Test that duplicate alerts within deduplication window are suppressed"""
+        alert_system = AlertSystem(log_file=self.log_file)
+        
+        threat = {'type': 'signature', 'rule': 'syn_flood', 'confidence': 0.9, 'severity': 'high'}
+        packet_info = {
+            'source_ip': '192.168.1.100',
+            'destination_ip': '10.0.0.1',
+            'source_port': 12345,
+            'destination_port': 80
+        }
+        
+        # First alert
+        result1 = alert_system.generate_alert(threat, packet_info)
+        self.assertTrue(result1)
+        
+        # Duplicate alert (same flow, same threat, within 60 seconds)
+        result2 = alert_system.generate_alert(threat, packet_info)
+        self.assertFalse(result2)  # Should be suppressed
+        
+        # Third duplicate
+        result3 = alert_system.generate_alert(threat, packet_info)
+        self.assertFalse(result3)  # Should be suppressed
+        
+        stats = alert_system.get_statistics()
+        self.assertEqual(stats['total_alerts_generated'], 1)
+        self.assertEqual(stats['total_alerts_suppressed'], 2)
+        self.assertGreater(stats['suppression_rate'], 0)
+    
+    def test_different_flows_not_suppressed(self):
+        """Test that alerts for different flows are not suppressed"""
+        alert_system = AlertSystem(log_file=self.log_file)
+        
+        threat = {'type': 'signature', 'rule': 'syn_flood', 'confidence': 0.9, 'severity': 'high'}
+        
+        # Flow 1
+        packet_info1 = {
+            'source_ip': '192.168.1.100',
+            'destination_ip': '10.0.0.1',
+            'source_port': 12345,
+            'destination_port': 80
+        }
+        
+        # Flow 2 (different destination IP)
+        packet_info2 = {
+            'source_ip': '192.168.1.100',
+            'destination_ip': '10.0.0.2',  # Different!
+            'source_port': 12345,
+            'destination_port': 80
+        }
+        
+        result1 = alert_system.generate_alert(threat, packet_info1)
+        result2 = alert_system.generate_alert(threat, packet_info2)
+        
+        self.assertTrue(result1)
+        self.assertTrue(result2)  # Different flow, should not be suppressed
+        
+        stats = alert_system.get_statistics()
+        self.assertEqual(stats['total_alerts_generated'], 2)
+        self.assertEqual(stats['total_alerts_suppressed'], 0)
+        self.assertEqual(stats['unique_flows_alerted'], 2)
+
+
+    def test_alert_after_deduplication_window(self):
+        """Test that alerts are allowed after deduplication window expires"""
+        # Create alert system with 1-second window for faster testing
+        alert_system = AlertSystem(log_file=self.log_file)
+        alert_system.deduplication_window = 1  # 1 second for testing
+        
+        threat = {'type': 'signature', 'rule': 'syn_flood', 'confidence': 0.9, 'severity': 'high'}
+        packet_info = {
+            'source_ip': '192.168.1.100',
+            'destination_ip': '10.0.0.1',
+            'source_port': 12345,
+            'destination_port': 80
+        }
+        
+        # First alert
+        result1 = alert_system.generate_alert(threat, packet_info)
+        self.assertTrue(result1)
+        
+        # Wait for deduplication window to expire
+        time.sleep(1.5)
+        
+        # Alert after window - should be allowed (ongoing attack update)
+        result2 = alert_system.generate_alert(threat, packet_info)
+        self.assertTrue(result2)
+        
+        stats = alert_system.get_statistics()
+        self.assertEqual(stats['total_alerts_generated'], 2)
+        self.assertEqual(stats['total_alerts_suppressed'], 0)
+    
+    def test_rate_limit_enforcement(self):
+        """Test that rate limiting prevents alert storms"""
+        alert_system = AlertSystem(log_file=self.log_file)
+        alert_system.rate_limit_per_minute = 10  # Low limit for testing
+        
+        threat = {'type': 'signature', 'rule': 'syn_flood', 'confidence': 0.9, 'severity': 'high'}
+        
+        # Generate 15 alerts from different flows (to bypass deduplication)
+        generated = 0
+        rate_limited = 0
+        
+        for i in range(15):
+            packet_info = {
+                'source_ip': f'192.168.1.{i}',  # Different source each time
+                'destination_ip': '10.0.0.1',
+                'source_port': 12345 + i,
+                'destination_port': 80
+            }
+            
+            result = alert_system.generate_alert(threat, packet_info)
+            if result:
+                generated += 1
+            else:
+                rate_limited += 1
+        
+        # Should generate 10 alerts, then rate limit the rest
+        self.assertEqual(generated, 10)
+        self.assertEqual(rate_limited, 5)
+        
+        stats = alert_system.get_statistics()
+        self.assertEqual(stats['total_rate_limited'], 5)
+    
+    def test_deduplication_with_config(self):
+        """Test that deduplication settings are loaded from config"""
+        config = ConfigLoader()
+        alert_system = AlertSystem(log_file=self.log_file, config=config)
+        
+        # Check that config values are loaded
+        self.assertEqual(alert_system.deduplication_window, 
+                        config.get('alerting.deduplication_window', 60))
+        self.assertEqual(alert_system.rate_limit_per_minute,
+                        config.get('alerting.rate_limit_per_minute', 100))
+
+# ===================================
+# LIVE NETWORK TEST
+# ===================================
 class LiveNetworkTest:
     """
     Live network testing, not a unit test
@@ -325,7 +512,9 @@ class LiveNetworkTest:
         print(f"Detection rate: {(threat_count/packet_analyzed*100):.1f}%" if packet_analyzed > 0 else "N/A")
         print(f"{'='*60}\n")
 
-
+# ===================================
+# PCAP GENERATION AND TESTING
+# ===================================
 def generate_test_pcap(filename="test_traffic.pcap"):
     """
     Generate a PCAP file with various traffic patterns for testing
@@ -347,20 +536,25 @@ def generate_test_pcap(filename="test_traffic.pcap"):
         pkt.time = current_time + i * 1.0
         packets.append(pkt)
 
-    # SYN flood - Many SYN packets from different sources
-    for i in range(50):
+    # SYN flood - Many SYN packets at HIGH rate (>1500 pkt/sec)
+    # Generate 30 packets over 0.01 seconds = 3000 pkt/sec
+    for i in range(30):
         pkt = IP(src=f"10.0.0.{i%255}", dst="192.168.1.2") / TCP(sport=5000+i, dport=80, flags="S")
-        pkt.time = current_time + 10 + i * 0.01
+        pkt.time = current_time + 10 + i * 0.0003 # 0.3ms apart = ~3000 pkts/sec
         packets.append(pkt)
 
     # Port scan - SYN packets to sequential ports
-    for port in range(20, 100):
+    # Generate 25 packets over 0.03 seconds = ~800 pkt/sec
+    for port in range(20, 45):
         pkt = IP(src="192.168.1.100", dst="192.168.1.2") / TCP(sport=4321, dport=port, flags="S")
-        pkt.time = current_time + 15 + (port-20) * 0.02
+        pkt.time = current_time + 15 + (port-20) * 0.0012 # 1.2ms apart = ~800 pkt/sec
         packets.append(pkt)
     
     wrpcap(filename, packets)
     print(f"✓ Generated {len(packets)} packets in {filename}")
+    print(f"  - 20 normal packets")
+    print(f"  - 30 SYN flood packets (~3000 pkt/sec)")
+    print(f"  - 25 port scan packets (~800 pkt/sec)")
     return filename
 
 def test_with_pcap(pcap_file):
@@ -406,6 +600,10 @@ def test_with_pcap(pcap_file):
     print(f"Clean packets: {len(packets) - threat_count}")
     print(f"{'='*60}\n")
 
+
+# ===================================
+# MAIN TEST RUNNER
+# ===================================
 if __name__ == "__main__":
     import sys
     

@@ -39,6 +39,7 @@ class AlertSystem:
         # Rate limiting settings
         self.rate_limit_enabled = True
         self.rate_limit_per_minute = self._get_config('alerting.rate_limit_per_minute', 100)
+        self.rate_limit_window = 60 # seconds
 
         # Alert tracking
         # Key: (src_ip, dst_ip, src_port, dst_port, threat_type)
@@ -156,7 +157,7 @@ class AlertSystem:
 
         if history['first_seen'] is None:
             history['first_seen'] = current_time
-            self.stats['unique_flows_altered'] += 1
+            self.stats['unique_flows_alerted'] += 1
 
         history['last_seen'] = current_time
 
