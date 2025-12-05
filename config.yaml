@@ -85,7 +85,13 @@ alerting:
   
   # Alert deduplication window (seconds)
   # Same flow won't trigger duplicate alerts within this time
+  # Set to 0 to disable deduplication
   deduplication_window: 60
+
+  # Gloabl rate limit (alerts per minute)
+  # Prevents alert storms from overwhelming the system
+  # Set to 0 to disbale rate limiting (not reccomended)
+  rate_limit_per_minute: 100
   
   # Email notifications (Phase 3, Item #10)
   email:
@@ -196,25 +202,3 @@ advanced:
 # NOTES
 # ============================================================================
 # 
-# TUNING TIPS:
-# 
-# 1. False Positives Too High?
-#    - Increase rate_thresholds (1500 -> 2000, 500 -> 800)
-#    - Increase min_packet_count (15 -> 25)
-#    - Add your network to whitelist
-#
-# 2. Missing Real Attacks?
-#    - Decrease rate_thresholds (1500 -> 1000, 500 -> 300)
-#    - Decrease min_packet_count (15 -> 10)
-#    - Enable anomaly detection after training
-#
-# 3. Performance Issues?
-#    - Reduce max_flows (10000 -> 50s00)
-#    - Decrease flow_timeout (300 -> 120)
-#    - Add BPF filter to reduce packet volume
-#
-# 4. Too Many Alerts?
-#    - Enable deduplication (set window to 60-300 seconds)
-#    - Increase min_severity to 'medium' or 'high'
-#    - Adjust individual rule thresholds
-#

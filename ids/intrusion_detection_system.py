@@ -310,10 +310,8 @@ Configuration File:
 
     return parser.parse_args()
 
-
-
 def main():
-   """
+    """
     Main entry point for running the IDS as a standalone application.
     
     Phase 2, Item #5: Enhanced with configuration file support.
