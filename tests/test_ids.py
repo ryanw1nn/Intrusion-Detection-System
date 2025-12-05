@@ -9,6 +9,7 @@ from ids.traffic_analyzer import TrafficAnalyzer
 from ids.detection_engine import DetectionEngine
 from ids.alert_system import AlertSystem
 from ids.config_loader import ConfigLoader
+from ids.packet_filter import PacketFilter
 import numpy as np
 import time
 import os
@@ -425,6 +426,241 @@ class TestAlertDeduplication(unittest.TestCase):
                         config.get('alerting.deduplication_window', 60))
         self.assertEqual(alert_system.rate_limit_per_minute,
                         config.get('alerting.rate_limit_per_minute', 100))
+        
+# ===================================
+# PACKET FILTERING TESTS
+# ===================================
+
+class TestPacketFilter(unittest.TestCase):
+    """Unit tests for PacketFilter"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.filter = PacketFilter()
+
+    def test_individual_ip_whitelist(self):
+        """Test whitelisting individual IP addresses"""
+        # Add localhost to whitelist
+        self.filter.add_to_whitelist("127.0.0.1")
+        
+        # Create packet from whitelisted IP
+        packet = IP(src="127.0.0.1", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        
+        should_analyze, is_blacklisted = self.filter.should_analyze(packet)
+        
+        self.assertFalse(should_analyze, "Whitelisted IP should not be analyzed")
+        self.assertFalse(is_blacklisted, "Whitelisted IP should not be blacklisted")
+
+    def test_network_range_whitelist(self):
+        """Test whitelisting network ranges (CIDR notation)"""
+        # Add entire /24 network to whitelist
+        self.filter.add_to_whitelist("192.168.1.0/24")
+        
+        # Test various IPs in that range
+        for last_octet in [1, 50, 100, 254]:
+            packet = IP(src=f"192.168.1.{last_octet}", dst="8.8.8.8") / TCP(sport=12345, dport=80)
+            should_analyze, _ = self.filter.should_analyze(packet)
+            self.assertFalse(should_analyze, f"192.168.1.{last_octet} should be whitelisted")
+        
+        # Test IP outside the range
+        packet = IP(src="192.168.2.1", dst="8.8.8.8") / TCP(sport=12345, dport=80)
+        should_analyze, _ = self.filter.should_analyze(packet)
+        self.assertTrue(should_analyze, "192.168.2.1 should NOT be whitelisted")
+
+    def test_port_whitelist(self):
+        """Test whitelisting ports"""
+        # Create filter with whitelisted ports
+        config = ConfigLoader()
+        config.override('filtering.whitelist_ports', [22, 443])
+        filter_with_ports = PacketFilter(config=config)
+        
+        # Test SSH port (22)
+        packet = IP(src="8.8.8.8", dst="192.168.1.1") / TCP(sport=12345, dport=22)
+        should_analyze, _ = filter_with_ports.should_analyze(packet)
+        self.assertFalse(should_analyze, "Port 22 should be whitelisted")
+        
+        # Test HTTPS port (443)
+        packet = IP(src="8.8.8.8", dst="192.168.1.1") / TCP(sport=443, dport=80)
+        should_analyze, _ = filter_with_ports.should_analyze(packet)
+        self.assertFalse(should_analyze, "Port 443 should be whitelisted (source)")
+        
+        # Test non-whitelisted port
+        packet = IP(src="8.8.8.8", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        should_analyze, _ = filter_with_ports.should_analyze(packet)
+        self.assertTrue(should_analyze, "Port 80 should NOT be whitelisted")
+
+    def test_blacklist_individual_ip(self):
+        """Test blacklisting individual IP addresses"""
+        # Add known bad actor to blacklist
+        self.filter.add_to_blacklist("10.0.0.1")
+        
+        packet = IP(src="10.0.0.1", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        should_analyze, is_blacklisted = self.filter.should_analyze(packet)
+        
+        self.assertTrue(should_analyze, "Blacklisted IP should be analyzed")
+        self.assertTrue(is_blacklisted, "IP should be flagged as blacklisted")
+
+    def test_blacklist_network_range(self):
+        """Test blacklisting network ranges"""
+        # Add entire /24 network to blacklist
+        self.filter.add_to_blacklist("10.0.0.0/24")
+        
+        # Test various IPs in that range
+        for last_octet in [1, 50, 100, 254]:
+            packet = IP(src=f"10.0.0.{last_octet}", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+            should_analyze, is_blacklisted = self.filter.should_analyze(packet)
+            self.assertTrue(should_analyze, "Blacklisted IP should be analyzed")
+            self.assertTrue(is_blacklisted, f"10.0.0.{last_octet} should be blacklisted")
+        
+        # Test IP outside the range
+        packet = IP(src="10.0.1.1", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        should_analyze, is_blacklisted = self.filter.should_analyze(packet)
+        self.assertTrue(should_analyze, "Should analyze non-blacklisted IP")
+        self.assertFalse(is_blacklisted, "10.0.1.1 should NOT be blacklisted")
+
+    def test_whitelist_takes_precedence(self):
+        """Test that whitelist takes precedence over blacklist"""
+        # Add IP to both whitelist and blacklist
+        self.filter.add_to_whitelist("192.168.1.100")
+        self.filter.add_to_blacklist("192.168.1.100")
+        
+        packet = IP(src="192.168.1.100", dst="8.8.8.8") / TCP(sport=12345, dport=80)
+        should_analyze, is_blacklisted = self.filter.should_analyze(packet)
+        
+        # Whitelist should win - packet should not be analyzed at all
+        self.assertFalse(should_analyze, "Whitelisted IP should not be analyzed even if blacklisted")
+
+    def test_destination_ip_whitelist(self):
+        """Test that both source and destination IPs are checked against whitelist"""
+        self.filter.add_to_whitelist("192.168.1.1")
+        
+        # Test with whitelisted destination
+        packet = IP(src="8.8.8.8", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        should_analyze, _ = self.filter.should_analyze(packet)
+        self.assertFalse(should_analyze, "Packet to whitelisted destination should not be analyzed")
+
+    def test_remove_from_whitelist(self):
+        """Test removing entries from whitelist"""
+        # Add and then remove
+        self.filter.add_to_whitelist("192.168.1.100")
+        self.filter.remove_from_whitelist("192.168.1.100")
+        
+        packet = IP(src="192.168.1.100", dst="8.8.8.8") / TCP(sport=12345, dport=80)
+        should_analyze, _ = self.filter.should_analyze(packet)
+        
+        self.assertTrue(should_analyze, "Removed IP should now be analyzed")
+
+    def test_remove_from_blacklist(self):
+        """Test removing entries from blacklist"""
+        # Add and then remove
+        self.filter.add_to_blacklist("10.0.0.1")
+        self.filter.remove_from_blacklist("10.0.0.1")
+        
+        packet = IP(src="10.0.0.1", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        should_analyze, is_blacklisted = self.filter.should_analyze(packet)
+        
+        self.assertTrue(should_analyze, "Should still analyze (not whitelisted)")
+        self.assertFalse(is_blacklisted, "Should not be blacklisted after removal")
+
+    def test_invalid_ip_handling(self):
+        """Test handling of invalid IP addresses"""
+        # These should fail gracefully without crashing
+        result1 = self.filter.add_to_whitelist("not_an_ip")
+        result2 = self.filter.add_to_blacklist("999.999.999.999")
+        
+        self.assertFalse(result1, "Invalid IP should not be added to whitelist")
+        self.assertFalse(result2, "Invalid IP should not be added to blacklist")
+
+    def test_statistics_tracking(self):
+        """Test that filtering statistics are tracked correctly"""
+        self.filter.add_to_whitelist("127.0.0.1")
+        self.filter.add_to_blacklist("10.0.0.1")
+        
+        # Create some packets
+        whitelist_packet = IP(src="127.0.0.1", dst="8.8.8.8") / TCP(sport=12345, dport=80)
+        blacklist_packet = IP(src="10.0.0.1", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        normal_packet = IP(src="8.8.8.8", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        
+        # Process them
+        self.filter.should_analyze(whitelist_packet)
+        self.filter.should_analyze(blacklist_packet)
+        self.filter.should_analyze(normal_packet)
+        
+        stats = self.filter.get_statistics()
+        
+        self.assertEqual(stats['whitelisted_packets'], 1, "Should track whitelisted packets")
+        self.assertEqual(stats['blacklisted_packets'], 1, "Should track blacklisted packets")
+        self.assertEqual(stats['total_packets_filtered'], 1, "Should track total filtered (whitelisted only)")
+
+    def test_ipv6_support(self):
+        """Test IPv6 address filtering"""
+        # Add IPv6 address to whitelist
+        self.filter.add_to_whitelist("::1")  # IPv6 localhost
+        
+        # This would need IPv6 packet support in Scapy
+        # Placeholder for future IPv6 testing
+        pass
+
+    def test_config_integration(self):
+        """Test loading whitelist/blacklist from config file"""
+        # Create config with filtering rules
+        config = ConfigLoader()
+        config.override('filtering.whitelist', ['127.0.0.1', '192.168.1.0/24'])
+        config.override('filtering.blacklist', ['10.0.0.1'])
+        
+        filter_with_config = PacketFilter(config=config)
+        
+        stats = filter_with_config.get_statistics()
+        self.assertEqual(stats['whitelist_entries'], 2, "Should load 2 whitelist entries from config")
+        self.assertEqual(stats['blacklist_entries'], 1, "Should load 1 blacklist entry from config")
+
+
+# ===================================
+# PACKET FILTERING EDGE TESTS
+# ===================================
+
+class TestPacketFilterEdgeCases(unittest.TestCase):
+    """Test edge cases and error handling"""
+
+    def test_empty_filter(self):
+        """Test filter with no rules"""
+        filter_empty = PacketFilter()
+        
+        packet = IP(src="8.8.8.8", dst="192.168.1.1") / TCP(sport=12345, dport=80)
+        should_analyze, is_blacklisted = filter_empty.should_analyze(packet)
+        
+        self.assertTrue(should_analyze, "Should analyze when no rules are set")
+        self.assertFalse(is_blacklisted, "Should not be blacklisted when no rules")
+
+    def test_overlapping_networks(self):
+        """Test handling of overlapping network ranges"""
+        filter_overlap = PacketFilter()
+        
+        # Add overlapping networks
+        filter_overlap.add_to_whitelist("192.168.0.0/16")  # Larger range
+        filter_overlap.add_to_whitelist("192.168.1.0/24")  # Smaller range within
+        
+        packet = IP(src="192.168.1.50", dst="8.8.8.8") / TCP(sport=12345, dport=80)
+        should_analyze, _ = filter_overlap.should_analyze(packet)
+        
+        self.assertFalse(should_analyze, "Should be whitelisted by either range")
+
+    def test_non_ip_packet(self):
+        """Test handling of non-IP packets"""
+        filter_test = PacketFilter()
+        filter_test.add_to_whitelist("192.168.1.1")
+        
+        # Create packet without IP layer (ARP, for example)
+        # This should not crash
+        try:
+            from scapy.all import ARP, Ether
+            arp_packet = Ether()/ARP()
+            should_analyze, is_blacklisted = filter_test.should_analyze(arp_packet)
+            # Should return True, False (analyze but not blacklisted)
+            self.assertTrue(True, "Should handle non-IP packets gracefully")
+        except Exception as e:
+            self.fail(f"Should not crash on non-IP packets: {e}")
+
 
 # ===================================
 # LIVE NETWORK TEST

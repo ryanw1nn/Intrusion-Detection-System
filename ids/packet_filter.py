@@ -38,9 +38,8 @@ class PacketFilter:
         )
         
         # Port whitelists (ports to ignore completely)
-        self.whitelist_ports = set(
-            self._get_config('filtering.whitelist_ports', [])
-        )
+        whitelist_ports_config = self._get_config('filtering.whitelist_ports', [])
+        self.whitelist_ports = set(whitelist_ports_config) if whitelist_ports_config else set()
         
         # Statistics
         self.stats = {
@@ -68,7 +67,8 @@ class PacketFilter:
     def _get_config(self, path: str, default):
         """Get config value or use default."""
         if self.config:
-            return self.config.get(path, default)
+            value = self.config.get(path, default)
+            return value if value is not None else default
         return default
     
     def _parse_ip_list(self, ip_strings: List[str]) -> List:
@@ -81,6 +81,9 @@ class PacketFilter:
         Returns:
             List of ipaddress.IPv4Address, IPv4Network, IPv6Address, or IPv6Network objects
         """
+        if not ip_strings:
+            return []
+
         parsed = []
         
         for ip_str in ip_strings:

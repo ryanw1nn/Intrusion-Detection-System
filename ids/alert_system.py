@@ -247,11 +247,6 @@ class AlertSystem:
                 f"{'NEW' if alert['status'] == 'new' else 'ONGOING (' + str(history['suppressed_count']) + ' suppressed)'}"            
             )
 
-            # TO-DO:
-            # - Email notifications
-            # - Slack/Discord webhooks?
-            # - STEM integration
-
             self._send_high_priority_notifications(alert)
         
         self.stats['total_alerts_generated'] += 1
