@@ -15,6 +15,7 @@ from ids.traffic_analyzer import TrafficAnalyzer
 from ids.detection_engine import DetectionEngine
 from ids.alert_system import AlertSystem
 from ids.config_loader import load_config
+from ids.packet_filter import PacketFilter
 
 # Configure logging (will be reconfigured based on config file)
 logging.basicConfig(
@@ -48,6 +49,9 @@ class IntrusionDetectionSystem:
         # Initialize IDS components with configuration
         logger.info("Initializing IDS components...")
 
+        # Packet Filter
+        self.packet_filter = PacketFilter(config=self.config)
+
         # Packet Capture
         queue_size = self.config.get('network.queue_size', 1000) if self.config else 1000
         self.packet_capture = PacketCapture(queue_size=queue_size)
@@ -70,7 +74,9 @@ class IntrusionDetectionSystem:
         # Statistics 
         self.stats = {
             'packets_processed': 0,
+            'packets_filtered': 0,
             'threats_detected': 0,
+            'blacklisted_threats': 0,
             'errors': 0
         }
 
@@ -91,6 +97,18 @@ class IntrusionDetectionSystem:
         logger.info(f"Flow Timeout: {self.config.get('flow_tracking.flow_timeout')}s")
         logger.info(f"Alert Log: {self.config.get('alerting.log_file')}")
         
+        # Filtering info
+        whitelist = self.config.get('filtering.whitelist', [])
+        blacklist = self.config.get('filtering.blacklist', [])
+        whitelist_ports = self.config.get('filtering.whitelist_ports', [])
+
+        if whitelist:
+            logger.info(f"Whitelisted IPs: {len(whitelist)} entries")
+        if blacklist:
+            logger.info(f"Blacklisted IPs: {len(blacklist)} entries")
+        if whitelist_ports:
+            logger.info(f"Whitelisted Ports: {whitelist_ports}")
+
         # Detection rules
         logger.info("Enabled Detection Rules:")
         if self.config.get('detection.syn_flood.enabled'):
@@ -124,6 +142,15 @@ class IntrusionDetectionSystem:
         if self.config:
             print(f"Configuration: {self.config.config_path}")
             print(f"Alert log: {self.config.get('alerting.log_file')}")
+
+            # Show filtering info
+            filter_stats = self.packet_filter.get_statistics()
+            if filter_stats['whitelist_entries'] > 0:
+                print(f"Whitelist: {filter_stats['whitelist_entries']} IP/network entries")
+            if filter_stats['blacklist_entries'] > 0:
+                print(f"Blacklist: {filter_stats['blacklist_entries']} IP/network entries")
+            if filter_stats['whitelisted_ports'] > 0:
+                print(f"Whitelisted ports: {filter_stats['whitelisted_ports']} ports")
         else:
             print(f"Alert log: ids_alerts.log")
             print(f"(No config file - using defaults)")
@@ -165,6 +192,14 @@ class IntrusionDetectionSystem:
         Args:
             packet: Scapy packet object
         """
+        # Apply whitelist/blacklist filtering
+        should_analyze, is_blacklisted = self.packet_filter.should_analyze(packet)
+
+        if not should_analyze:
+            # Packet is whitelisted - skip analysis entirely
+            self.stats['packet_filtered'] += 1
+            return
+        
         # Extract features from packet
         features = self.traffic_analyzer.analyze_packet(packet)
 
@@ -176,11 +211,28 @@ class IntrusionDetectionSystem:
         # Detect threats
         threats = self.detection_engine.detect_threats(features)
 
+        # If pcaket is from blacklisted source, treat even minor issues as threats
+        if is_blacklisted and not threats:
+            # Create a synthetic threat for blacklisted sources
+            threats = [{
+                'type': 'blacklist',
+                'rule': 'blacklisted_source',
+                'confidence': 1.0,
+                'severity': 'high',
+                'description': 'Traffic from known blacklisted source'
+            }]
+            self.stats['blacklisted_threats'] += 1
+
+
         if threats:
             self.stats['threats_detected'] += len(threats)
 
             # Generate alerts for each detected threat
             for threat in threats:
+                # blacklist flag to threat metadata
+                if is_blacklisted:
+                    threat['blacklisted'] = True
+
                 packet_info = {
                     'source_ip': packet[IP].src,
                     'source_port': packet[TCP].sport,
@@ -190,6 +242,7 @@ class IntrusionDetectionSystem:
                 self.alert_system.generate_alert(threat, packet_info)
 
             # log to console for visibility
+            blacklist_marker = " [BLACKLISTED]" if is_blacklisted else ""
             logger.warning(
                 f"THREAT: {threat.get('rule', threat['type'])} | "
                 f"{packet[IP].src}:{packet[TCP].sport} -> "
@@ -222,12 +275,18 @@ class IntrusionDetectionSystem:
         # Stop packet capture
         self.packet_capture.stop()
 
+        # Get filter statistics
+        filter_stats = self.packet_filter.get_statistics()
+
         # Display statistics
         print(f"\n{'='*60}")
         print(f"IDS Statistics")
         print(f"{'='*60}")
         print(f"Packets processed: {self.stats['packets_processed']}")
+        print(f"Packets filtered (whitelisted): {filter_stats['whitelisted__packets']}")
+        print(f"Packets filtered (ports): {filter_stats['port_filtered_packets']}")
         print(f"Threats detected: {self.stats['threats_detected']}")
+        print(f"Threats from blacklisted sources: {self.stats['blacklisted_threats']}")
         print(f"Errors encountered: {self.stats['errors']}")
         print(f"{'='*60}\n")
         
@@ -244,7 +303,8 @@ class IntrusionDetectionSystem:
             **self.stats,
             'active_flows': self.traffic_analyzer.get_flow_count(),
             'queue_size': self.packet_capture.get_queue_size(),
-            'detection_engine': self.detection_engine.get_statistics()
+            'detection_engine': self.detection_engine.get_statistics(),
+            'filter_stats': self.packet_filter.get_statistics()
         }
     
 def parse_arguments():
