@@ -67,7 +67,7 @@ class StatisticsTracker:
 
         # Track attackers (source IPs with threat counts)
         self.attacker_counts = defaultdict(int) # {ip: count}
-        self.attack_last_seen = {}  # {ip: timestamp}
+        self.attacker_last_seen = {}  # {ip: timestamp}
 
         # Track filtered packets
         self.filtered_timestamps = deque(maxlen=10000)
@@ -102,7 +102,7 @@ class StatisticsTracker:
             timestamp = time.time()
 
         with self.lock:
-            self.threat_tiemstamps.append(timestamp)
+            self.threat_timestamps.append(timestamp)
             self.attacker_counts[source_ip] += 1
             self.attacker_last_seen[source_ip] = timestamp
 
@@ -119,7 +119,7 @@ class StatisticsTracker:
         with self.lock:
             self.filtered_timestamps.append(timestamp)
     
-    def get_rate(self) -> Dict[str, float]:
+    def get_rates(self) -> Dict[str, float]:
         """
         Calculate current rates (per second).
 

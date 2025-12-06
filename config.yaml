@@ -164,8 +164,10 @@ performance:
   # Batch size for packet processing
   batch_size: 10
   
-  # Statistics update interval (seconds)
-  stats_interval: 10
+  # Real-time statistics display settings
+  stats_display_enabled: true   # Enabled/disable real-time stats
+  stats_interval: 10            # Update intervals in seconds
+  stats_use_colors: true        # Use ANSI colors in output
 
 # ============================================================================
 # ADVANCED FEATURES

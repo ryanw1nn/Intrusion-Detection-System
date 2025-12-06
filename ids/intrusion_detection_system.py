@@ -16,6 +16,7 @@ from ids.detection_engine import DetectionEngine
 from ids.alert_system import AlertSystem
 from ids.config_loader import load_config
 from ids.packet_filter import PacketFilter
+from ids.statistics_display import StatisticsTracker, StatisticsDisplay
 
 # Configure logging (will be reconfigured based on config file)
 logging.basicConfig(
@@ -71,7 +72,15 @@ class IntrusionDetectionSystem:
         log_file = self.config.get('alerting.log_file', 'ids_alerts.log') if self.config else 'ids_alerts.log'
         self.alert_system = AlertSystem(log_file=log_file, config=self.config)
 
-        # Statistics 
+        # Statistics Tracking and Display
+        self.stats_tracker = StatisticsTracker(window_size=60)
+        self.stats_display = StatisticsDisplay(
+            ids_instance=self,
+            tracker=self.stats_tracker,
+            config=self.config
+        )
+
+        # Basic statistics counters
         self.stats = {
             'packets_processed': 0,
             'packets_filtered': 0,
@@ -108,6 +117,11 @@ class IntrusionDetectionSystem:
             logger.info(f"Blacklisted IPs: {len(blacklist)} entries")
         if whitelist_ports:
             logger.info(f"Whitelisted Ports: {whitelist_ports}")
+
+        # Statistics display
+        stats_enabled = self.config.get('performance.stats_display_enabled', True)
+        stats_interval = self.config.get('performance.stats_interval', 10)
+        logger.info(f"Real-time stats: {'enabled' if stats_enabled else 'disabled'} (interval: {stats_interval}s)")
 
         # Detection rules
         logger.info("Enabled Detection Rules:")
@@ -151,6 +165,14 @@ class IntrusionDetectionSystem:
                 print(f"Blacklist: {filter_stats['blacklist_entries']} IP/network entries")
             if filter_stats['whitelisted_ports'] > 0:
                 print(f"Whitelisted ports: {filter_stats['whitelisted_ports']} ports")
+
+            # Show stats display status
+            stats_enabled = self.config.get('performance.stats_display_enabled', True)
+            if stats_enabled:
+                stats_interval = self.config.get('performance.stats_interval', 10)
+                print(f"Real-time statistics: enabled (updates every {stats_interval}s)")
+            else:
+                print(f"Real-time statistics: disabled")
         else:
             print(f"Alert log: ids_alerts.log")
             print(f"(No config file - using defaults)")
@@ -160,6 +182,9 @@ class IntrusionDetectionSystem:
 
         # Start packet capture
         self.packet_capture.start_capture(self.interface)
+
+        # Start statistics display (if enabled)
+        self.stats_display.start()
 
         # Main processing loop
         while self.running:
@@ -198,6 +223,7 @@ class IntrusionDetectionSystem:
         if not should_analyze:
             # Packet is whitelisted - skip analysis entirely
             self.stats['packet_filtered'] += 1
+            self.stats_tracker.record_filtered()
             return
         
         # Extract features from packet
@@ -207,6 +233,7 @@ class IntrusionDetectionSystem:
             return
         
         self.stats['packets_processed'] += 1
+        self.stats_tracker.record_packet()
 
         # Detect threats
         threats = self.detection_engine.detect_threats(features)
@@ -227,6 +254,10 @@ class IntrusionDetectionSystem:
         if threats:
             self.stats['threats_detected'] += len(threats)
 
+            # Record threat in statistics tracker
+            source_ip = packet[IP].src
+            self.stats_tracker.record_threat(source_ip)
+
             # Generate alerts for each detected threat
             for threat in threats:
                 # blacklist flag to threat metadata
@@ -242,12 +273,13 @@ class IntrusionDetectionSystem:
                 self.alert_system.generate_alert(threat, packet_info)
 
             # log to console for visibility
-            blacklist_marker = " [BLACKLISTED]" if is_blacklisted else ""
-            logger.warning(
-                f"THREAT: {threat.get('rule', threat['type'])} | "
-                f"{packet[IP].src}:{packet[TCP].sport} -> "
-                f"{packet[IP].dst}:{packet[TCP].dport}"
-            )
+            if not self.stats_display.enabled or not self.stats_display.running:
+                blacklist_marker = " [BLACKLISTED]" if is_blacklisted else ""
+                logger.warning(
+                    f"THREAT: {threat.get('rule', threat['type'])} | "
+                    f"{packet[IP].src}:{packet[TCP].sport} -> "
+                    f"{packet[IP].dst}:{packet[TCP].dport}"
+                )
 
     def _signal_handler(self, signum, frame):
         """
@@ -272,6 +304,9 @@ class IntrusionDetectionSystem:
         self.running = False
         logger.info("Stopping IDS...")
 
+        # Stop statistics display
+        self.stats_display.stop()
+
         # Stop packet capture
         self.packet_capture.stop()
 
@@ -283,7 +318,7 @@ class IntrusionDetectionSystem:
         print(f"IDS Statistics")
         print(f"{'='*60}")
         print(f"Packets processed: {self.stats['packets_processed']}")
-        print(f"Packets filtered (whitelisted): {filter_stats['whitelisted__packets']}")
+        print(f"Packets filtered (whitelisted): {filter_stats['whitelisted_packets']}")
         print(f"Packets filtered (ports): {filter_stats['port_filtered_packets']}")
         print(f"Threats detected: {self.stats['threats_detected']}")
         print(f"Threats from blacklisted sources: {self.stats['blacklisted_threats']}")
@@ -304,7 +339,9 @@ class IntrusionDetectionSystem:
             'active_flows': self.traffic_analyzer.get_flow_count(),
             'queue_size': self.packet_capture.get_queue_size(),
             'detection_engine': self.detection_engine.get_statistics(),
-            'filter_stats': self.packet_filter.get_statistics()
+            'filter_stats': self.packet_filter.get_statistics(),
+            'stats_tracker': self.stats_tracker.get_total_counts(),
+            'rates': self.stats_tracker.get_rates()
         }
     
 def parse_arguments():
@@ -418,3 +455,7 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)
+
+    
+if __name__ == "__main__":
+    main()
