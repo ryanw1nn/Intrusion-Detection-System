@@ -2,117 +2,358 @@
 
 A production-ready Python-based Network Intrusion Detection System that monitors network traffic in real-time to detect security threats using both signature-based and anomaly-based detection methods.
 
-## 🎯 Features
+## Table of Contents
 
-- **Real-time Packet Capture**: Monitors network interfaces for TCP/IP traffic using Scapy
-- **Dual Detection Methods**:
-  - **Signature-based**: Detects known attack patterns (SYN floods, port scans, large packets)
-  - **Anomaly-based**: Uses machine learning (Isolation Forest) to identify unusual traffic patterns
-- **Flow Tracking**: Maintains detailed statistics for individual network flows with LRU eviction
-- **Structured Alerting**: Logs threats to file in JSON format with severity levels
-- **Comprehensive Testing**: Full unit test suite with live network and PCAP testing capabilities
-- **Extensible Architecture**: Easily add custom detection rules and notification methods
-- **Performance Optimized**: Handles high-traffic networks with configurable queue sizes and flow limits
-
-## 📋 Table of Contents
-
+- [Overview](#overview)
+- [Features](#features)
 - [Architecture](#architecture)
+- [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Configuration](#configuration)
 - [Usage](#usage)
 - [Detection Methods](#detection-methods)
+- [Filtering](#filtering)
 - [Testing](#testing)
-- [Configuration](#configuration)
 - [Project Structure](#project-structure)
-- [Performance & Tuning](#performance--tuning)
+- [Documentation](#documentation)
+- [Performance](#performance)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Authors](#authors)
 
+## Overview
 
-- [Future Enhancements](#future-enhancements)
+This IDS provides comprehensive network security monitoring capabilities with minimal false positives through intelligent filtering and configurable detection thresholds. The system is designed to be lightweight, extensible, and suitable for both production deployments and educational purposes.
 
-## 🏗️ Architecture
+### Key Capabilities
+
+- Real-time TCP/IP traffic monitoring
+- Dual detection methodology (signature-based and anomaly-based)
+- Configurable whitelist/blacklist filtering
+- Alert deduplication and rate limiting
+- Flow-based traffic analysis with LRU eviction
+- YAML-based configuration management
+- Comprehensive logging and statistics
+
+## Features
+
+### Detection
+
+- **Signature-Based Detection**
+  - SYN flood attack detection
+  - Port scanning detection
+  - Large packet anomaly detection
+  - Configurable detection thresholds
+
+- **Anomaly-Based Detection**
+  - Machine learning with Isolation Forest algorithm
+  - Baseline traffic profiling
+  - Statistical outlier identification
+  - Adaptive threat detection
+
+### Traffic Management
+
+- **Flow Tracking**
+  - 5-tuple flow identification (src IP, dst IP, src port, dst port, protocol)
+  - LRU eviction policy for memory management
+  - Automatic cleanup of inactive flows
+  - Configurable flow timeout and limits
+
+- **Packet Filtering**
+  - IP address whitelisting (individual and CIDR ranges)
+  - IP address blacklisting (known bad actors)
+  - Port-based filtering
+  - IPv4 and IPv6 support
+
+### Alert System
+
+- **Deduplication**
+  - Configurable suppression window
+  - Flow-based alert tracking
+  - Ongoing attack monitoring
+  - Suppression statistics
+
+- **Rate Limiting**
+  - Prevents alert storms
+  - Configurable alerts per minute
+  - Automatic throttling during high-threat periods
+
+- **Logging**
+  - Structured JSON format
+  - Severity-based filtering
+  - Alert metadata and context
+  - Historical tracking
+
+### Real-Time Statistics Display
+
+- **Live Monitoring**
+  - Updates every 10 seconds (configurable)
+  - Non-blocking separate thread
+  - Color-coded ANSI output
+
+- **Metrics Displayed**
+  - Packets per second (current rate)
+  - Threats per second (current rate)
+  - Filtered packets per second
+  - Total cumulative counts
+  - Active flows count
+
+- **Top Attackers**
+  - Top 5 most active sources
+  - Threat count per IP
+  - Time since last activity
+  - Auto-filters inactive sources
+
+- **Visual Indicators**
+  - Green: Normal/low threat
+  - Yellow: Moderate/warning
+  - Red: High threat/critical
+  - Configurable or can be disabled
+
+## Architecture
 
 ```
 ┌──────────────────┐
 │ Packet Capture   │ ──> Captures TCP/IP packets from network interface
-│  (Scapy + Queue) │     • Threaded capture to prevent blocking
-└────────┬─────────┘     • Configurable queue size (default: 1000)
+│  (Scapy + Queue) │     • Threaded capture
+└────────┬─────────┘     • Configurable queue size
          │
          ▼
 ┌──────────────────┐
-│Traffic Analyzer  │ ──> Extracts features and tracks flow statistics
+│  Packet Filter   │ ──> Applies whitelist/blacklist rules
+│ (Whitelist/Black)│     • IP/network filtering
+└────────┬─────────┘     • Port filtering
+         │
+         ▼
+┌──────────────────┐
+│Traffic Analyzer  │ ──> Extracts features and tracks flows
 │  (Flow Tracking) │     • 5-tuple flow identification
-└────────┬─────────┘     • LRU eviction policy
-         │               • Automatic cleanup of old flows
+└────────┬─────────┘     • Feature extraction
+         │
          ▼
 ┌──────────────────┐
-│Detection Engine  │ ──> Applies detection rules and ML models
-│ (Signatures + ML)│     • Signature rules with tunable thresholds
-└────────┬─────────┘     • Isolation Forest anomaly detection
-         │               • Extensible rule framework
+│Detection Engine  │ ──> Applies detection rules
+│ (Signatures + ML)│     • Signature matching
+└────────┬─────────┘     • Anomaly detection
+         │
          ▼
 ┌──────────────────┐
-│  Alert System    │ ──> Logs and notifies about detected threats
-│ (JSON Logging)   │     • Structured JSON alert format
-└──────────────────┘     • Severity-based filtering
-                         • Hooks for custom notifications
+│  Alert System    │ ──> Manages and logs alerts
+│  (Deduplication) │     • Deduplication
+└──────────────────┘     • Rate limiting
 ```
 
-## 🚀 Installation
+## Requirements
 
-### Prerequisites
+### System Requirements
 
+- **Operating System**: Linux, macOS, or Windows with WSL
 - **Python**: 3.8 or higher
-- **OS**: Linux, macOS, or Windows with WSL
 - **Permissions**: Root/sudo access (required for packet capture)
+- **Memory**: 512MB minimum, 2GB recommended
+- **Network**: Access to network interface for monitoring
 
-### Setup Steps
+### Python Dependencies
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd IDS_project
-   ```
-
-2. **Create virtual environment**:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### Dependencies
-
-Create a `requirements.txt` file with:
 ```
 scapy>=2.5.0
-scikit-learn>=1.3.0
-numpy>=1.24.0
+scikit-learn>=1.5.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+pyyaml>=6.0
 ```
 
-## ⚡ Quick Start
+## Installation
+
+### 1. Clone Repository
 
 ```bash
-# 1. Activate virtual environment
-source venv/bin/activate
-
-# 2. Run unit tests to verify installation
-python -m tests.test_ids
-
-# 3. Test with synthetic attack traffic
-python -m tests.test_ids --pcap
-
-# 4. Start the IDS (requires sudo)
-sudo python3 -m ids.intrusion_detection_system -i en0
-
-# 5. View alerts in real-time (in another terminal)
-tail -f ids_alerts.log
+git clone <repository-url>
+cd IDS_project
 ```
 
-## 📖 Usage
+### 2. Create Virtual Environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Verify Installation
+
+```bash
+python -m tests.test_ids
+```
+
+Expected output: `Ran 34 tests ... OK`
+
+## Quick Start
+
+### Basic Usage
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Start IDS with default configuration
+sudo python3 -m ids.intrusion_detection_system
+
+# Or specify custom configuration
+sudo python3 -m ids.intrusion_detection_system -c config.yaml
+
+# Monitor specific interface
+sudo python3 -m ids.intrusion_detection_system -i en0
+```
+
+### Stop the IDS
+
+Press `Ctrl+C` for graceful shutdown. Statistics will be displayed:
+
+```
+============================================================
+IDS Statistics
+============================================================
+Packets processed: 1523
+Packets filtered (whitelisted): 487
+Threats detected: 15
+Threats from blacklisted sources: 3
+Errors encountered: 0
+============================================================
+```
+
+### Real-Time Statistics
+
+While running, the IDS displays live statistics every 10 seconds:
+
+```
+================================================================================
+IDS Real-Time Statistics - 2025-12-05 14:30:45
+Uptime: 2h 15m 30s
+================================================================================
+RATES (per second):
+  Packets processed:    45.23
+  Threats detected:      2.15
+  Packets filtered:     12.50
+
+TOTALS:
+  Total packets:        14852
+  Total threats:          706
+  Total filtered:        4123
+  Unique attackers:        12
+  Active flows:           234
+
+TOP ATTACKERS:
+  1. 192.168.1.100           45 threats  (5s ago)
+  2. 10.0.0.15               32 threats  (12s ago)
+  3. 203.0.113.42            28 threats  (18s ago)
+  4. 198.51.100.7            15 threats  (45s ago)
+  5. 192.168.1.200           12 threats  (1m ago)
+================================================================================
+```
+
+Statistics are color-coded:
+- **Green**: Normal rates, low threat levels
+- **Yellow**: Moderate activity, warning levels
+- **Red**: High threat activity, critical alerts
+
+To disable statistics display:
+```bash
+sudo python3 -m ids.intrusion_detection_system --no-stats
+```
+
+## Configuration
+
+### Configuration File
+
+The IDS uses YAML configuration files for flexible customization. Default configuration file: `config.yaml`
+
+### Key Configuration Sections
+
+#### Network Settings
+
+```yaml
+network:
+  interface: "lo0"          # Network interface to monitor
+  queue_size: 1000          # Packet buffer size
+  bpf_filter: ""            # Berkeley Packet Filter expression
+```
+
+#### Detection Thresholds
+
+```yaml
+detection:
+  syn_flood:
+    enabled: true
+    rate_threshold: 1500    # Packets per second
+    min_packet_count: 15
+    severity: "high"
+  
+  port_scan:
+    enabled: true
+    rate_threshold: 500
+    min_packet_count: 15
+    severity: "medium"
+```
+
+#### Filtering Rules
+
+```yaml
+filtering:
+  whitelist:
+    - "127.0.0.1"           # Localhost
+    - "192.168.1.0/24"      # Internal network
+  
+  blacklist:
+    - "45.142.120.15"       # Known malicious IP
+  
+  whitelist_ports:
+    - 443                   # HTTPS
+    - 22                    # SSH
+```
+
+#### Alert Configuration
+
+```yaml
+alerting:
+  log_file: "ids_alerts.log"
+  min_severity: "low"
+  deduplication_window: 60      # Seconds
+  rate_limit_per_minute: 100    # Maximum alerts
+```
+
+#### Statistics Display Configuration
+
+```yaml
+performance:
+  stats_display_enabled: true   # Enable/disable real-time display
+  stats_interval: 10             # Update interval in seconds
+  stats_use_colors: true         # ANSI color codes
+```
+
+### Command Line Overrides
+
+```bash
+# Override interface
+sudo python3 -m ids.intrusion_detection_system -i eth0
+
+# Override detection thresholds
+sudo python3 -m ids.intrusion_detection_system --syn-flood-threshold 2000
+
+# Disable real-time statistics display
+sudo python3 -m ids.intrusion_detection_system --no-stats
+
+# Run without config file (use defaults)
+sudo python3 -m ids.intrusion_detection_system --no-config
+```
+
+## Usage
 
 ### Finding Your Network Interface
 
@@ -129,41 +370,22 @@ ifconfig
 ```
 
 Common interface names:
+
 | Interface | Description |
 |-----------|-------------|
-| `lo0` / `lo` | Loopback (local traffic only) |
+| `lo0` / `lo` | Loopback (local traffic) |
 | `eth0` | Ethernet (Linux) |
 | `en0` / `en1` | WiFi/Ethernet (macOS) |
 | `wlan0` | WiFi (Linux) |
 
-### Running the IDS
-
-**Monitor specific interface**:
-```bash
-sudo python3 -m ids.intrusion_detection_system -i en0
-```
-
-**Default behavior** (monitors `lo0`):
-```bash
-sudo python3 -m ids.intrusion_detection_system
-```
-
-### Stopping the IDS
-
-Press `Ctrl+C` for graceful shutdown. The system will:
-- Stop packet capture
-- Flush remaining packets
-- Display statistics
-- Clean up resources
-
-### Viewing Alerts
+### Monitoring Alerts
 
 **Real-time monitoring**:
 ```bash
 tail -f ids_alerts.log
 ```
 
-**Pretty-print JSON alerts**:
+**Pretty-print JSON**:
 ```bash
 cat ids_alerts.log | python -m json.tool
 ```
@@ -177,7 +399,7 @@ grep '"severity": "high"' ids_alerts.log
 
 ```json
 {
-  "timestamp": "2025-10-27T14:30:45.123456",
+  "timestamp": "2025-12-05T14:30:45.123456",
   "threat_type": "signature",
   "rule": "port_scan",
   "severity": "medium",
@@ -186,75 +408,162 @@ grep '"severity": "high"' ids_alerts.log
   "source_port": 54321,
   "destination_ip": "192.168.1.2",
   "destination_port": 80,
+  "status": "new",
+  "alert_count": 1,
+  "suppressed_count": 0,
   "description": "Potential port scanning activity detected"
 }
 ```
 
-## 🔍 Detection Methods
+## Detection Methods
 
 ### Signature-Based Detection
 
 Detects known attack patterns using predefined rules:
 
-#### 1. **SYN Flood Attack**
-- **Indicators**:
-  - Pure SYN packets (no ACK flag)
-  - Very high packet rate (>500 packets/second)
-  - Small packet sizes (<100 bytes)
-  - Multiple packets in flow (≥3)
-- **Severity**: High
-- **Common scenarios**: DDoS attacks, resource exhaustion
+#### SYN Flood Attack
 
-#### 2. **Port Scan**
-- **Indicators**:
-  - SYN packets to multiple ports
-  - High packet rate (>100 packets/second)
-  - Small packet sizes (<100 bytes)
-  - Very short flow duration (<0.5 seconds)
-  - Multiple packets in flow (≥3)
-- **Severity**: Medium
-- **Common scenarios**: Network reconnaissance, vulnerability scanning
+**Indicators**:
+- Pure SYN packets (no ACK flag)
+- High packet rate (>1500 packets/second)
+- Small packet sizes (<100 bytes)
+- Multiple packets in flow
 
-#### 3. **Large Packet**
-- **Indicators**:
-  - Packet size exceeds typical MTU (>1500 bytes)
-- **Severity**: Low
-- **Common scenarios**: Potential fragmentation attacks, data exfiltration
+**Severity**: High
+
+#### Port Scan
+
+**Indicators**:
+- SYN packets to multiple ports
+- High packet rate (>500 packets/second)
+- Small packet sizes (<100 bytes)
+- Short flow duration (<0.5 seconds)
+
+**Severity**: Medium
+
+#### Large Packet
+
+**Indicators**:
+- Packet size exceeds typical MTU (>1500 bytes)
+
+**Severity**: Low
 
 ### Anomaly-Based Detection
 
-Uses **Isolation Forest** machine learning algorithm:
+Uses Isolation Forest machine learning algorithm:
+
 - **Training**: Learns baseline from normal traffic patterns
 - **Detection**: Identifies statistical outliers in real-time
 - **Features**: Packet size, packet rate, byte rate
 - **Threshold**: Configurable (default: -0.5)
-- **Note**: Requires training data; disabled by default in live tests to avoid false positives
 
-## 🧪 Testing
+Note: Requires training on baseline traffic; disabled by default.
+
+## Filtering
+
+### Whitelist
+
+**Purpose**: Completely ignore traffic from trusted sources
+
+**Use Cases**:
+- Internal corporate networks
+- Trusted services (DNS, NTP)
+- Monitoring infrastructure
+- Development environments
+
+**Effect**: Packets are not analyzed at all (maximum performance, zero false positives)
+
+**Example**:
+```yaml
+whitelist:
+  - "127.0.0.1"           # Localhost
+  - "10.0.0.0/8"          # Private network
+  - "192.168.1.0/24"      # Office network
+```
+
+### Blacklist
+
+**Purpose**: Flag traffic from known bad actors with heightened sensitivity
+
+**Use Cases**:
+- Known malicious IPs
+- Bot networks
+- Previously detected attackers
+- Threat intelligence feeds
+
+**Effect**: Traffic is always flagged as a threat, even without matching attack patterns
+
+**Example**:
+```yaml
+blacklist:
+  - "45.142.120.15"       # Known attacker
+  - "103.224.182.0/24"    # Bot network
+```
+
+### Port Whitelist
+
+**Purpose**: Ignore specific ports/services
+
+**Use Cases**:
+- Trusted internal services
+- High-volume legitimate traffic
+- Services monitored separately
+
+**Effect**: Any packet with whitelisted source OR destination port is ignored
+
+**Example**:
+```yaml
+whitelist_ports:
+  - 22    # SSH
+  - 443   # HTTPS
+  - 3306  # MySQL
+```
+
+### Supported Formats
+
+- **Individual IPs**: `"192.168.1.100"`, `"::1"`
+- **CIDR Networks**: `"192.168.1.0/24"`, `"10.0.0.0/8"`
+- **IPv6**: `"2001:db8::/32"`, `"fe80::/10"`
+- **Ports**: Integer values (1-65535)
+
+## Testing
 
 ### Unit Tests
 
 Run the complete test suite:
+
 ```bash
 python -m tests.test_ids
 ```
 
-Tests include:
-- ✅ Packet analysis and feature extraction
-- ✅ Flow tracking and cleanup
-- ✅ SYN flood detection
-- ✅ Port scan detection
-- ✅ Normal traffic (no false positives)
-- ✅ Anomaly detection
+Run statistics display tests separately:
+
+```bash
+python -m tests.test_statistics_display
+```
+
+Test coverage includes:
+- Packet analysis and feature extraction
+- Flow tracking and cleanup
+- SYN flood detection
+- Port scan detection
+- Normal traffic (false positive testing)
+- Anomaly detection
+- Whitelist/blacklist filtering
+- Alert deduplication
+- Statistics tracking and rate calculation
+- Real-time display formatting
+- Configuration integration
 
 ### PCAP File Testing
 
 Test with synthetic attack traffic:
+
 ```bash
 python -m tests.test_ids --pcap
 ```
 
-This generates a PCAP file containing:
+Generates a PCAP file containing:
 - 20 normal packets (ACK flags)
 - 50 SYN flood packets (from different sources)
 - 80 port scan packets (to sequential ports)
@@ -262,80 +571,20 @@ This generates a PCAP file containing:
 ### Live Network Testing
 
 Test on real network traffic:
+
 ```bash
 sudo python3 -m tests.test_ids --live en0
 ```
 
-**Note**: Anomaly detection is disabled for live tests to prevent false positives from poorly matched synthetic training data.
+**Note**: Anomaly detection is disabled for live tests to prevent false positives.
 
 ### Test with Custom PCAP
 
 ```bash
-python -m tests.test_ids --pcap /path/to/your/capture.pcap
+python -m tests.test_ids --pcap /path/to/capture.pcap
 ```
 
-## ⚙️ Configuration
-
-### Adding Custom Detection Rules
-
-```python
-from ids.detection_engine import DetectionEngine
-
-engine = DetectionEngine()
-
-# Define custom rule
-def detect_large_outbound(features):
-    return (
-        features['byte_rate'] > 1000000 and  # >1MB/sec
-        features['flow_duration'] > 10
-    )
-
-# Add to engine
-engine.add_signature_rule(
-    name='large_outbound',
-    condition=detect_large_outbound,
-    severity='high',
-    description='Large sustained outbound transfer detected'
-)
-```
-
-### Adjusting Detection Thresholds
-
-Edit `ids/detection_engine.py`:
-
-```python
-# SYN Flood threshold
-very_high_rate = features['packet_rate'] > 500  # Adjust this value
-
-# Port Scan threshold
-high_rate = features['packet_rate'] > 100  # Adjust this value
-```
-
-### Customizing System Parameters
-
-```python
-from ids.intrusion_detection_system import IntrusionDetectionSystem
-from ids.traffic_analyzer import TrafficAnalyzer
-from ids.packet_capture import PacketCapture
-
-# Create IDS with custom configuration
-ids = IntrusionDetectionSystem(interface='en0')
-
-# Customize traffic analyzer
-ids.traffic_analyzer = TrafficAnalyzer(
-    max_flows=5000,      # Track up to 5000 concurrent flows
-    flow_timeout=600     # Keep flows for 10 minutes
-)
-
-# Customize packet capture
-ids.packet_capture = PacketCapture(
-    queue_size=2000      # Buffer up to 2000 packets
-)
-
-ids.start()
-```
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 IDS_project/
@@ -343,56 +592,94 @@ IDS_project/
 │   ├── __init__.py
 │   ├── intrusion_detection_system.py  # Main orchestration & CLI
 │   ├── packet_capture.py              # Network packet capture
-│   ├── traffic_analyzer.py            # Flow tracking & feature extraction
+│   ├── traffic_analyzer.py            # Flow tracking & features
 │   ├── detection_engine.py            # Threat detection logic
-│   └── alert_system.py                # Alert logging & notifications
+│   ├── alert_system.py                # Alert management
+│   ├── packet_filter.py               # Whitelist/blacklist filtering
+│   ├── statistics_display.py          # Real-time stats display
+│   └── config_loader.py               # Configuration management
 │
 ├── tests/                            # Test suite
-│   └── test_ids.py                   # Unit & integration tests
+│   ├── __init__.py
+│   ├── test_ids.py                   # Unit & integration tests
+│   └── test_statistics_display.py    # Statistics display tests
 │
+├── config.yaml                       # Configuration file
 ├── requirements.txt                  # Python dependencies
+├── pyproject.toml                    # Project metadata
 ├── README.md                         # This file
 ├── ids_alerts.log                    # Generated alert log (JSON)
-└── test_traffic.pcap                 # Generated test PCAP (optional)
+└── ids.log                           # System log
 ```
 
-## 📊 Performance & Tuning
+## Documentation
+
+### User Guides
+
+- **Configuration Guide**: `config.yaml` with inline comments
+- **Whitelist/Blacklist Guide**: `WHITELIST_BLACKLIST_GUIDE.md`
+- **Integration Guide**: `README_INTEGRATION.md`
+
+### Technical Documentation
+
+- **Implementation Summary**: `IMPLEMENTATION_SUMMARY.md`
+- **Bug Fix Summary**: `BUGFIX_SUMMARY.md`
+- **API Documentation**: Inline docstrings in all modules
+
+### Getting Help
+
+1. Check the configuration file: `config.yaml`
+2. Review logs: `ids.log` and `ids_alerts.log`
+3. Run tests: `python -m tests.test_ids`
+4. Enable debug logging: Set `logging.level: "DEBUG"` in config
+
+## Performance
 
 ### Typical Resource Usage
 
 - **CPU**: 5-15% on moderate traffic (1000 packets/sec)
 - **Memory**: ~100MB baseline + ~1KB per tracked flow
 - **Disk I/O**: Minimal (alert logging only)
+- **Statistics Display**: <0.1% CPU, ~1MB memory (for 60s window)
 
 ### Performance Tuning
 
 #### High-Traffic Networks
-```python
-# Increase queue size and flow limits
-PacketCapture(queue_size=5000)
-TrafficAnalyzer(max_flows=50000, flow_timeout=60)
+
+```yaml
+network:
+  queue_size: 5000
+
+flow_tracking:
+  max_flows: 50000
+  flow_timeout: 60
 ```
 
 #### Low-Resource Systems
-```python
-# Reduce memory footprint
-TrafficAnalyzer(max_flows=1000, flow_timeout=120)
-PacketCapture(queue_size=500)
+
+```yaml
+network:
+  queue_size: 500
+
+flow_tracking:
+  max_flows: 1000
+  flow_timeout: 120
 ```
 
-#### Busy Networks with Many Short Connections
-```python
-# Shorter timeout for faster cleanup
-TrafficAnalyzer(flow_timeout=60, cleanup_interval=30)
+#### Reduce False Positives
+
+```yaml
+detection:
+  syn_flood:
+    rate_threshold: 2000    # Less sensitive
+    min_packet_count: 20
+  
+  port_scan:
+    rate_threshold: 800
+    min_packet_count: 20
 ```
 
-### Flow Management
-
-- **LRU Eviction**: Oldest flows removed when max_flows reached
-- **Timeout Cleanup**: Inactive flows cleaned up every 60 seconds
-- **Manual Cleanup**: `traffic_analyzer.cleanup_old_flows()`
-
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Permission Denied
 
@@ -405,170 +692,135 @@ sudo python3 -m ids.intrusion_detection_system -i en0
 
 Packet capture requires root privileges to access raw sockets.
 
----
-
 ### No Packets Captured
 
 **Symptoms**: IDS starts but shows 0 threats and 0 packets processed
 
 **Solutions**:
-1. **Verify interface exists and is up**:
+
+1. Verify interface exists and is up:
    ```bash
-   ifconfig  # Should show interface with UP status
+   ifconfig
    ```
 
-2. **Check for traffic on interface**:
+2. Check for traffic on interface:
    ```bash
-   sudo tcpdump -i en0 -c 10  # Should show packets
+   sudo tcpdump -i en0 -c 10
    ```
 
-3. **Try loopback interface**:
+3. Try loopback interface:
    ```bash
    sudo python3 -m ids.intrusion_detection_system -i lo0
    # Generate traffic: curl http://localhost:8000
    ```
 
----
+### Statistics Not Updating
+
+**Symptoms**: Statistics display shows zeros or doesn't update
+
+**Solutions**:
+
+1. Check you're monitoring the correct interface:
+   ```bash
+   # Find active network interface
+   ifconfig | grep -B 2 "status: active"
+   
+   # Restart with correct interface
+   sudo python3 -m ids.intrusion_detection_system -i en0
+   ```
+
+2. Verify traffic is flowing:
+   ```bash
+   # Generate test traffic on loopback
+   ping 127.0.0.1
+   
+   # Or curl to local service
+   curl http://localhost:8000
+   ```
+
+3. Check statistics are enabled in config:
+   ```yaml
+   performance:
+     stats_display_enabled: true
+   ```
+
+4. Ensure you haven't used `--no-stats` flag
+
+### Colors Not Displaying
+
+**Symptoms**: Statistics show with `^[[92m` type codes instead of colors
+
+**Solutions**:
+
+1. Your terminal may not support ANSI colors. Disable them:
+   ```yaml
+   performance:
+     stats_use_colors: false
+   ```
+
+2. Or use a modern terminal emulator (iTerm2, GNOME Terminal, Windows Terminal)
 
 ### High False Positive Rate
 
-**Symptoms**: Normal HTTPS traffic triggering SYN flood/port scan alerts
+**Symptoms**: Normal HTTPS traffic triggering alerts
 
 **Solutions**:
 
-1. **Increase detection thresholds** in `detection_engine.py`:
-   ```python
-   # SYN Flood
-   very_high_rate = features['packet_rate'] > 1000  # Increase from 500
-   
-   # Port Scan
-   high_rate = features['packet_rate'] > 200  # Increase from 100
+1. Increase detection thresholds in `config.yaml`:
+   ```yaml
+   detection:
+     syn_flood:
+       rate_threshold: 2000    # Increase from 1500
+     port_scan:
+       rate_threshold: 800     # Increase from 500
    ```
 
-2. **Disable anomaly detection** for production use (only use signatures)
-
-3. **Add whitelisting** for trusted sources
-
----
-
-### Memory Usage Growing
-
-**Symptoms**: IDS memory usage increases over time
-
-**Solutions**:
-
-1. **Reduce max_flows**:
-   ```python
-   TrafficAnalyzer(max_flows=5000)  # Down from 10000
+2. Add trusted networks to whitelist:
+   ```yaml
+   filtering:
+     whitelist:
+       - "192.168.1.0/24"
    ```
 
-2. **Decrease flow_timeout**:
-   ```python
-   TrafficAnalyzer(flow_timeout=180)  # 3 minutes instead of 5
+3. Disable anomaly detection for production:
+   ```yaml
+   detection:
+     anomaly:
+       enabled: false
    ```
 
-3. **Manual cleanup**:
-   ```python
-   ids.traffic_analyzer.cleanup_old_flows()
-   ```
+### Configuration Errors
 
----
+**Problem**: Invalid YAML syntax
 
-### Packet Queue Full
+**Check syntax**:
+```bash
+python3 -c "import yaml; yaml.safe_load(open('config.yaml'))"
+```
 
-**Symptoms**: Log shows "Packet queue full - dropping packet"
+**Common issues**:
+- Incorrect indentation (YAML is whitespace-sensitive)
+- Missing quotes around IP addresses with special characters
+- Invalid CIDR notation
 
-**Solutions**:
-
-1. **Increase queue size**:
-   ```python
-   PacketCapture(queue_size=5000)
-   ```
-
-2. **Optimize detection logic** to process packets faster
-
-3. **Use faster hardware** or reduce traffic with BPF filters
-
-## 🚧 Limitations
-
-Current limitations and known issues:
-
-- **TCP Only**: Only monitors TCP traffic (UDP/ICMP not supported)
-- **Single Interface**: Monitors one network interface at a time
-- **No Payload Inspection**: Only analyzes packet headers and statistics
-- **IPv4 Focused**: Limited IPv6 support
-- **Real-time Only**: Production mode doesn't support offline PCAP analysis
-- **No Packet Reassembly**: Fragmented packets treated as separate flows
-- **Local Analysis**: No distributed deployment or correlation
-
-## 🔮 Future Enhancements
-
-Planned features and improvements:
-
-- [ ] **Protocol Support**
-  - UDP traffic analysis
-  - ICMP monitoring
-  - Full IPv6 support
-
-- [ ] **Advanced Detection**
-  - Deep packet inspection (DPI)
-  - Payload pattern matching
-  - Behavioral analysis (connection patterns)
-  - Geo-IP analysis
-
-- [ ] **User Interface**
-  - Web-based dashboard (Flask/FastAPI)
-  - Real-time visualization
-  - Historical analysis
-
-- [ ] **Notifications**
-  - Email alerts
-  - Slack integration
-  - Webhook support
-  - SIEM forwarding (Splunk, ELK)
-
-- [ ] **Configuration**
-  - YAML/JSON rule definitions
-  - Hot-reload configuration
-  - Per-interface settings
-
-- [ ] **Deployment**
-  - Docker containerization
-  - Distributed deployment
-  - Multi-interface support
-  - Cloud integration (AWS, Azure)
-
-- [ ] **Performance**
-  - Multi-threaded packet processing
-  - Hardware acceleration
-  - BPF filtering
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/your-feature`
-3. **Add tests** for new features
-4. **Ensure all tests pass**: `python -m tests.test_ids`
-5. **Follow code style**: PEP 8 compliance
-6. **Update documentation**: README and docstrings
-7. **Submit pull request** with detailed description
+## Contributing
 
 ### Development Setup
 
 ```bash
-# Clone your fork
-git clone https://github.com/yourusername/IDS_project.git
+# Clone repository
+git clone <repository-url>
 cd IDS_project
 
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# Install dev dependencies
+# Install dependencies
 pip install -r requirements.txt
-pip install pytest black flake8  # Additional dev tools
+
+# Install development tools
+pip install pytest black flake8
 
 # Run tests
 python -m tests.test_ids
@@ -577,14 +829,65 @@ python -m tests.test_ids
 flake8 ids/ tests/
 ```
 
+### Contribution Guidelines
 
-## 👨‍💻 Authors
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Add tests for new features
+4. Ensure all tests pass: `python -m tests.test_ids`
+5. Follow PEP 8 code style
+6. Update documentation (README and docstrings)
+7. Submit pull request with detailed description
+
+### Code Style
+
+- Follow PEP 8 conventions
+- Maximum line length: 100 characters
+- Use type hints where applicable
+- Document all public methods and classes
+- Write descriptive commit messages
+
+## Authors
 
 **Ryan Winn**
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Scapy**: Powerful packet manipulation library
 - **scikit-learn**: Machine learning framework for anomaly detection
 - **Inspiration**: Traditional IDS systems (Snort, Suricata, Zeek)
 
+## Version History
+
+### Version 0.1.0 (Current)
+
+**Features**:
+- Real-time TCP/IP traffic monitoring
+- Signature-based detection (SYN flood, port scan, large packets)
+- Anomaly-based detection with machine learning
+- Whitelist/blacklist filtering (IP, network, port)
+- Alert deduplication and rate limiting
+- Real-time statistics display with color-coded output
+- YAML configuration management
+- Comprehensive test suite (55 unit tests)
+- IPv4 and IPv6 support
+
+**Known Limitations**:
+- TCP only (UDP/ICMP not supported)
+- Single interface monitoring
+- No payload inspection
+- No distributed deployment
+- Real-time only (no offline PCAP analysis in production mode)
+
+**Planned Features (Phase 3)**:
+- SQLite database logging
+- Email notifications
+- UDP protocol support
+- Web-based dashboard
+- PCAP export for suspicious flows
+
+---
+
+**Status**: Production-ready for TCP traffic monitoring
+
+**Last Updated**: December 5, 2025

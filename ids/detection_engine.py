@@ -12,12 +12,18 @@ import time
 
 logger = logging.getLogger(__name__)
 
-# constants
-ANOMALY_THRESHOLD = -0.5
+# TCP Flags
 SYN_FLAG = 0x02
 ACK_FLAG = 0x10
 FIN_FLAG = 0x01
 RST_FLAG = 0x04
+
+
+# Defaults constants (overridden by config if provided)
+DEFAULT_ANOMALY_THRESHOLD = -0.5
+DEFAULT_SYN_FLOOD_RATE = 1500
+DEFAULT_PORT_SCAN_RATE = 500
+DEFAULT_MIN_PACKET_COUNT = 15
 
 class DetectionEngine:
     """
@@ -28,12 +34,27 @@ class DetectionEngine:
     """
 
 
-    def __init__(self):
-        """Initialize the detection engine with default configuration."""
+    def __init__(self, config=None):
+        """
+        Initialize the detection engine with configuration.
+        
+        Args:
+            config: ConfigLoader instance
+        """
+        self.config = config
+
+        # Load thresholds from config or use defaults
+        self.syn_flood_rate = self._get_config('detection.syn_flood.rate_threshold', DEFAULT_SYN_FLOOD_RATE)
+        self.port_scan_rate = self._get_config('detection.port_scan.rate_threshold', DEFAULT_PORT_SCAN_RATE)
+        self.min_packet_count = self._get_config('detection.syn_flood.min_packet_count', DEFAULT_MIN_PACKET_COUNT)
+        self.anomaly_threshold = self._get_config('detection.anomaly.threshold', DEFAULT_ANOMALY_THRESHOLD)
+        self.anomaly_enabled = self._get_config('detection.anomaly.enabled', False)
+
         # Anomaly detector (machine learning model)
+        contamination = self._get_config('detection.anomaly.contamination', 0.1)
         self.anomaly_detector = IsolationForest(
-            contamination=0.1, # expected proportion of outliers
-            random_state=42
+            contamination = contamination,
+            random_state = 42
         )
 
         self.signature_rules = self.load_signature_rules()
@@ -48,33 +69,57 @@ class DetectionEngine:
         self.tracker_timeout = 60 # clean up tracking data after 60 seconds
 
         logger.info(f"DetectionEngine initialized with {len(self.signature_rules)} signature rules")
+        logger.info(f"Thresholds: SYN flood={self.syn_flood_rate} pkt/s, "
+                    f"Port scan={self.port_scan_rate} pkt/s, Min packets={self.min_packet_count}")
+        if self.anomaly_enabled:
+            logger.info(f"Anomaly detection enabled (threshold={self.anomaly_threshold})")
+        else:
+            logger.info("Anomaly detection disabled")
 
+    def _get_config(self, path: str, default):
+        """ Get config value or use default. """
+        if self.config:
+            return self.config.get(path, default)
+        return default
+                    
     def load_signature_rules(self) -> Dict:
         """
         Load signature-based detection rules
 
         Each rule defines a condition function and metadata about the threat.
+        Rules can be enabled/disabled via configuration
 
         Returns:
             Dictionary mapping rule names to rule definitions
         """
-        return {
-            'syn_flood': {
+        rules = {}
+
+        # SYN Flood rule
+        if self._get_config('detection.syn_flood.enabled', True):
+            rules['syn_flood'] = {
                 'condition': lambda features: self._detect_syn_flood(features),
-                'severity': 'high',
+                'severity': self._get_config('detection.syn_flood.severity', 'high'),
                 'description': 'Potential SYN flood attack detected - high rate of SYN packets'
-            },
-            'port_scan': {
-                'condition': lambda features: self._detect_port_scan(features),
-                'severity': 'medium',
-                'description': 'Potential port scanning activity detected'
-            },
-            'large_packet': {
-                'condition': lambda features: features['packet_size'] > 1500,
-                'severity': 'low',
-                'description': 'Unusually large packet detected (exceeds typical MTU)'
             }
-        }
+
+        # Port Scan Rule    
+        if self._get_config('detection.port_scan.enabled', True):
+            rules['port_scan'] = {
+                'condition': lambda features: self._detect_port_scan(features),
+                'severity': self._get_config('detection.port_scan.severity', 'medium'),
+                'description': 'Potential port scanning activity detected'
+            }
+
+        # Large Packet Rule
+        if self._get_config('detection.large_packet.enabled', True):
+            size_threshold = self._get_config('detection.large_packet.size_threshold', 1500)
+            rules['large_packet'] = {
+                'condition': lambda features: features['packet_size'] > size_threshold,
+                'severity': self._get_config('detection.large_packet.severity', 'low'),
+                'description': 'Unusually large packet detected (exceeds {size_threshold} bytes)'
+            }
+        
+        return rules
 
     def _detect_syn_flood(self, features: Dict) -> bool:
         """
@@ -99,11 +144,13 @@ class DetectionEngine:
         is_pure_syn = is_syn and not is_ack
 
         # High packet rate and small packets suggest flood
-        high_rate = features['packet_rate'] > 500
-        small_packet = features['packet_size'] < 100
+        high_rate = features['packet_rate'] > self.syn_flood_rate
+
+        max_size = self._get_config('detection.syn_flood.max_packet_size', 100)
+        small_packet = features['packet_size'] < max_size
 
         # Require multiple packets to avoid single-packet false positives
-        multiple_packets = features.get('packet_count', 1) >= 3
+        multiple_packets = features.get('packet_count', 1) >= self.min_packet_count
 
         return is_pure_syn and high_rate and small_packet and multiple_packets
 
@@ -125,12 +172,17 @@ class DetectionEngine:
             True if port scan detected, False otherwise
         """
         is_syn = features['tcp_flags'] & SYN_FLAG
-        high_rate = features['packet_rate'] > 100 # Lower threshold than SYN flood
-        small_packet = features['packet_size'] < 100
-        short_flow = features['flow_duration'] < 0.5 # quick probes
+        high_rate = features['packet_rate'] > self.port_scan_rate
+
+        max_size = self._get_config('detection.port_scan.max_packet_size', 100)
+        small_packet = features['packet_size'] < max_size
+
+        max_duration = self._get_config('detection.port_scan.max_flow_duration', 0.5)
+        short_flow = features['flow_duration'] < max_duration
 
         # require multiple packets to filter out legitimate single SYN packets
-        multiple_packets = features.get('packet_count', 1) >= 3
+        min_count = self._get_config('detection.port_scan.min_packet_count', self.min_packet_count)
+        multiple_packets = features.get('packet_count', 1) >= min_count
 
         return is_syn and high_rate and small_packet and short_flow and multiple_packets
 
@@ -196,7 +248,7 @@ class DetectionEngine:
                         'description': rule.get('description', '')
                     })
             except Exception as e:
-                logger.debug(f"Rule '{rule.name}' evaluation failed: {e}")
+                logger.debug(f"Rule '{rule_name}' evaluation failed: {e}")
 
 
         # anomaly-based detection (only if trained)
@@ -210,7 +262,7 @@ class DetectionEngine:
 
                 anomaly_score = self.anomaly_detector.score_samples(feature_vector)[0]
                 
-                if anomaly_score < ANOMALY_THRESHOLD:
+                if anomaly_score < self.anomaly_threshold:
                     # Map anomaly score to severity
                     if anomaly_score < -0.7:
                         severity = 'high'
@@ -281,12 +333,17 @@ class DetectionEngine:
             'is_trained': self.is_trained,
             'signature_rules_count': len(self.signature_rules),
             'tracked_connections': len(self.connection_tracker),
-            'anomaly_threshold': ANOMALY_THRESHOLD,
-            'available_rules': list(self.signature_rules.keys())
+            'anomaly_threshold': self.anomaly_threshold,
+            'available_rules': list(self.signature_rules.keys()),
+            'thresholds': {
+                'syn_flood_rate': self.syn_flood_rate,
+                'port_scan_rate': self.port_scan_rate,
+                'min_packet_count': self.min_packet_count
+            }
         }
 
     def reset(self):
         """ Reset the detection engine state (clears connection tracking) """
         num_connections = len(self.connection_tracker)
         self.connection_tracker.clear()
-        logger.info("Detection engine reset: cleared {num_connections} connection entries")
+        logger.info(f"Detection engine reset: cleared {num_connections} connection entries")
