@@ -1,0 +1,163 @@
+# Python IDS Project - .gitignore
+
+# ============================================
+# Generated Log Files (DO NOT COMMIT)
+# ============================================
+ids_alerts.log
+ids.log
+*.log
+
+# ============================================
+# Python
+# ============================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PIPFILE.lock
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ============================================
+# IDS-Specific Generated Files
+# ============================================
+# PCAP files (captured traffic)
+*.pcap
+*.pcapng
+captured_traffic/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+ids_alerts.db
+
+# Temporary test files
+test_traffic.pcap
+test_*.pcap
+
+# Generated reports
+reports/
+*.pdf
+*.html
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# ============================================
+# IDE / Editor
+# ============================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# Operating System
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ============================================
+# Security / Sensitive Files
+# ============================================
+config.local.yaml
+secrets.yaml
+.env
+.env.local
+
+# SSH keys
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# ============================================
+# Documentation Build Artifacts
+# ============================================
+docs/_build/
+site/
+
+# ============================================
+# Misc
+# ============================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
