@@ -7,8 +7,16 @@
 # NETWORK SETTINGS
 # ========================================
 network:
-  # Network interface to monitor (e.g., 'eth0', 'en0', 'wlan0', 'lo0')
-  interface: "lo0"
+  # Network interface to monitor
+  # Set to "auto" for automatic detection of best interface
+  # Or specify explicitly: 'eth0' (Linux), 'en0' (macOS), 'wlan0' (WiFi), etc.
+  # 
+  # To see available interfaces:
+  #   python3 -m ids.intrusion_detection_system --list-interfaces
+  #
+  # Auto-detection prefers: Ethernet > WiFi > Loopback
+  interface: "auto"
+
 
   # Maximum packets to buffer before processing
   queue_size: 1000
