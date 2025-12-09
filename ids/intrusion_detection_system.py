@@ -17,6 +17,7 @@ from ids.alert_system import AlertSystem
 from ids.config_loader import load_config
 from ids.packet_filter import PacketFilter
 from ids.statistics_display import StatisticsTracker, StatisticsDisplay
+from ids.interface_utils import detect_and_validate_interface, list_interfaces
 
 # Configure logging (will be reconfigured based on config file)
 logging.basicConfig(
@@ -44,8 +45,38 @@ class IntrusionDetectionSystem:
         self.config = config
         self.running = False
 
-        # Get interface from config or use default
-        self.interface = self.config.get('network.interface', 'lo0') if self.config else 'lo0'
+        # Get requested interface from config (may be None, "auto", or specific name)
+        requested_interface = None
+        if self.config:
+            config_interface = self.config.get('network.interface')
+            # Treat "auto" or empty string as auto-detect request
+            if config_interface and config_interface.lower() not in ['auto', '']:
+                requested_interface = config_interface
+
+        # Detect and validate interface with intelligent auto-detection
+        logger.info("Detecting network interface...")
+        self.interface, interface_valid = detect_and_validate_interface(
+            requested_interface=requested_interface,
+            auto_detect=True,
+            show_summary=False
+        )
+
+        # Fail fast if no valid interface found
+        if not interface_valid or not self.interface:
+            logger.error("="*60)
+            logger.error("INTERFACE DETECTION FAILED")
+            logger.error("="*60)
+            logger.error("Could not find a valid network interface to monitor")
+            logger.error("")
+            logger.error("To see available interfaces:")
+            logger.error("    python3 -m ids.intrusion_detection_system --list-interfaces")
+            logger.error("")
+            logger.error("To specify an interface:")
+            logger.error("    sudo python3 -m ids.intrusion_detection_system -i <interface_name>")
+            logger.error("="*60)
+            raise RuntimeError("No valid network interface available for monitoring")
+
+        logger.info(f"✓ Selected network interface: {self.interface}")
 
         # Initialize IDS components with configuration
         logger.info("Initializing IDS components...")
@@ -405,15 +436,45 @@ Configuration File:
         help='Run without loading config file (use all defaults)'
     )
 
+    parser.add_argument(
+        '--list-interfaces',
+        action='store_true',
+        help='List all available network interfaces and exit'
+    )
+    
+    parser.add_argument(
+        '--auto-detect-interface',
+        action='store_true',
+        help='Automatically detect best interface (overrides config and -i flag)'
+    )
+
     return parser.parse_args()
 
 def main():
     """
     Main entry point for running the IDS as a standalone application.
-    
-    Phase 2, Item #5: Enhanced with configuration file support.
     """
     args = parse_arguments()
+
+        # Handle --list-interfaces flag (show interfaces and exit)
+    if args.list_interfaces:
+        print("\n" + "="*70)
+        print("NETWORK INTERFACE DETECTION")
+        print("="*70 + "\n")
+        try:
+            list_interfaces()
+            print("\n💡 USAGE EXAMPLES:")
+            print("   # Use auto-detected interface:")
+            print("   sudo python3 -m ids.intrusion_detection_system --auto-detect-interface")
+            print("")
+            print("   # Use specific interface:")
+            print("   sudo python3 -m ids.intrusion_detection_system -i eth0")
+            print("")
+        except Exception as e:
+            print(f"Error listing interfaces: {e}")
+            print("You may need to run with sudo for full interface information.")
+        print("="*70 + "\n")
+        sys.exit(0)
     
     try:
         # Load configuration (unless --no-config specified)
@@ -424,8 +485,19 @@ def main():
             # Build CLI overrides dictionary
             cli_overrides = {}
             
-            if args.interface:
+            # Handle interface selection priority:
+            # 1. --auto-detect-interface flag (highest priority)
+            # 2. -i/--interface flag
+            # 3. Config file value
+            # 4. Auto-detect (if config is empty/auto)
+            if args.auto_detect_interface:
+                # Force auto-detection by clearing interface in config
+                cli_overrides['network.interface'] = None
+                logger.info("Interface auto-detection requested via --auto-detect-interface")
+            elif args.interface:
+                # Use explicitly specified interface
                 cli_overrides['network.interface'] = args.interface
+                logger.info(f"Interface specified via CLI: {args.interface}")
             
             if args.syn_flood_threshold:
                 cli_overrides['detection.syn_flood.rate_threshold'] = args.syn_flood_threshold
